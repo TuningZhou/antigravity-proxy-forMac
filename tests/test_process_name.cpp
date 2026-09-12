@@ -8,6 +8,7 @@
 #include "hooks/ProcessName.hpp"
 
 int main() {
+    using Hooks::ExtractBaseNameFromPathLike;
     using Hooks::GetCreateProcessTargetBaseNameA;
     using Hooks::IsAntigravityHostProcessName;
     using Hooks::IsLanguageServerProcessName;
@@ -36,13 +37,23 @@ int main() {
     assert(IsLanguageServerProcessName("language_server.exe"));
     assert(IsLanguageServerProcessName("language_server"));
     assert(IsLanguageServerProcessName("language_server_windows_x64.exe"));
+    assert(IsLanguageServerProcessName("language_server_macos_arm64"));
+    assert(IsLanguageServerProcessName("language_server_macos_x64"));
     assert(!IsLanguageServerProcessName("Antigravity IDE.exe"));
 
     // 保留宿主进程名分类工具的稳定行为；运行时策略在 main.cpp 中统一启用全量 Hook。
     assert(IsAntigravityHostProcessName("Antigravity.exe"));
     assert(IsAntigravityHostProcessName("ANTIGRAVITY IDE.EXE"));
+    assert(IsAntigravityHostProcessName("antigravity"));
+    assert(IsAntigravityHostProcessName("Antigravity"));
+    assert(IsAntigravityHostProcessName("antigravity ide"));
     assert(!IsAntigravityHostProcessName("language_server.exe"));
     assert(!IsAntigravityHostProcessName("node.exe"));
+
+    // macOS POSIX 路径测试
+    assert(ExtractBaseNameFromPathLike("/Applications/Antigravity.app/Contents/MacOS/Antigravity") == "Antigravity");
+    assert(ExtractBaseNameFromPathLike("/Users/test/.antigravity/bin/agy") == "agy");
+    assert(ExtractBaseNameFromPathLike("/path/to/language_server_macos_arm64") == "language_server_macos_arm64");
 
     return 0;
 }

@@ -1,8 +1,9 @@
+#include "UpdateChecker.hpp"
+
+#ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
-
-#include "UpdateChecker.hpp"
 
 #include <windows.h>
 #include <winhttp.h>
@@ -438,3 +439,10 @@ namespace UpdateChecker {
         }
     }
 }
+#else
+namespace UpdateChecker {
+    void StartAsync() {
+        // macOS / POSIX 平台更新检查占位（后续可支持 curl/libcurl 检查）
+    }
+}
+#endif

@@ -1,6 +1,5 @@
 #pragma once
-#include <winsock2.h>
-#include <ws2tcpip.h>
+#include "PlatformSocket.hpp"
 #include <chrono>
 #include <limits>
 #include <string>
@@ -29,7 +28,7 @@ namespace Network {
          * @param targetPort 目标端口
          * @return true 表示隧道建立成功
          */
-        static bool Handshake(SOCKET sock, const std::string& targetHost, uint16_t targetPort, int handshakeBudgetMs = -1) {
+        static bool Handshake(socket_t sock, const std::string& targetHost, uint16_t targetPort, int handshakeBudgetMs = -1) {
             if (Core::Logger::IsEnabled(Core::LogLevel::Debug)) {
                 Core::Logger::Debug("HTTP CONNECT: 开始握手, sock=" + std::to_string((unsigned long long)sock) +
                                     ", 目标=" + targetHost + ":" + std::to_string(targetPort));

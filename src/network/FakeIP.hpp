@@ -1,21 +1,34 @@
 #pragma once
+#include "PlatformSocket.hpp"
 #include <string>
 #include <unordered_map>
 #include <mutex>
 #include <vector>
-#include <winsock2.h>
-#include <ws2tcpip.h>
 #include <sstream>
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#include <windows.h>
 #include <cstring>
 #include <cstdint>
+#include <chrono>
+
+#ifndef _WIN32
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
+#endif
+
 #include "../core/Config.hpp"
 #include "../core/Logger.hpp"
 
 namespace Network {
+
+    inline uint64_t PlatformGetTickCount64() {
+#ifdef _WIN32
+        return GetTickCount64();
+#else
+        using namespace std::chrono;
+        return duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
+#endif
+    }
     
     // FakeIP 管理器 (Ring Buffer 策略)
     // 默认使用 198.18.0.0/15 (保留用于基准测试的网络，不容易冲突)
@@ -39,7 +52,7 @@ namespace Network {
 
         struct SharedEntry {
             uint32_t ip;       // host order
-            uint64_t tick;     // 最近写入时间（GetTickCount64）
+            uint64_t tick;     // 最近写入时间
             char domain[kSharedDomainMax + 1];
         };
 
@@ -51,23 +64,45 @@ namespace Network {
             SharedEntry entries[kSharedCapacity];
         };
 
+#ifdef _WIN32
         HANDLE m_sharedMap = NULL;
         HANDLE m_sharedMutex = NULL;
+#else
+        int m_sharedFd = -1;
+#endif
         SharedTable* m_shared = nullptr;
         std::once_flag m_sharedOnce;
 
         bool LockShared() {
+#ifdef _WIN32
             if (!m_sharedMutex) return false;
             DWORD wait = WaitForSingleObject(m_sharedMutex, INFINITE);
             return (wait == WAIT_OBJECT_0 || wait == WAIT_ABANDONED);
+#else
+            if (m_sharedFd < 0) return false;
+            struct flock fl{};
+            fl.l_type = F_WRLCK;
+            fl.l_whence = SEEK_SET;
+            return fcntl(m_sharedFd, F_SETLKW, &fl) == 0;
+#endif
         }
 
         void UnlockShared() {
+#ifdef _WIN32
             if (m_sharedMutex) ReleaseMutex(m_sharedMutex);
+#else
+            if (m_sharedFd >= 0) {
+                struct flock fl{};
+                fl.l_type = F_UNLCK;
+                fl.l_whence = SEEK_SET;
+                fcntl(m_sharedFd, F_SETLK, &fl);
+            }
+#endif
         }
 
         void EnsureSharedInitialized() {
             std::call_once(m_sharedOnce, [this]() {
+#ifdef _WIN32
                 m_sharedMutex = CreateMutexA(NULL, FALSE, kSharedMutexName);
                 const bool locked = LockShared();
 
@@ -99,6 +134,41 @@ namespace Network {
                 }
 
                 if (locked) UnlockShared();
+#else
+                const char* mapPath = "/tmp/antigravity_proxy_fakeip.map";
+                m_sharedFd = open(mapPath, O_RDWR | O_CREAT, 0666);
+                if (m_sharedFd < 0) return;
+
+                const bool locked = LockShared();
+                struct stat st{};
+                fstat(m_sharedFd, &st);
+                bool needInit = (st.st_size < static_cast<off_t>(sizeof(SharedTable)));
+                if (needInit) {
+                    if (ftruncate(m_sharedFd, sizeof(SharedTable)) != 0) {
+                        if (locked) UnlockShared();
+                        close(m_sharedFd);
+                        m_sharedFd = -1;
+                        return;
+                    }
+                }
+
+                m_shared = (SharedTable*)mmap(NULL, sizeof(SharedTable), PROT_READ | PROT_WRITE, MAP_SHARED, m_sharedFd, 0);
+                if (m_shared == MAP_FAILED) {
+                    m_shared = nullptr;
+                    if (locked) UnlockShared();
+                    close(m_sharedFd);
+                    m_sharedFd = -1;
+                    return;
+                }
+
+                if (needInit || m_shared->magic != kSharedMagic || m_shared->capacity != kSharedCapacity) {
+                    std::memset(m_shared, 0, sizeof(SharedTable));
+                    m_shared->magic = kSharedMagic;
+                    m_shared->capacity = kSharedCapacity;
+                    m_shared->cursor = 0;
+                }
+                if (locked) UnlockShared();
+#endif
             });
         }
 
@@ -110,7 +180,7 @@ namespace Network {
             uint32_t idx = m_shared->cursor++ % kSharedCapacity;
             SharedEntry& entry = m_shared->entries[idx];
             entry.ip = ipHostOrder;
-            entry.tick = GetTickCount64();
+            entry.tick = PlatformGetTickCount64();
             std::memset(entry.domain, 0, sizeof(entry.domain));
             const size_t n = (domain.size() < kSharedDomainMax) ? domain.size() : kSharedDomainMax;
             if (n > 0) {

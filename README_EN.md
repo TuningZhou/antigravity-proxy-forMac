@@ -11,13 +11,14 @@
 <p align="center">
   <a href="https://github.com/yuaotian/antigravity-proxy/actions"><img src="https://github.com/yuaotian/antigravity-proxy/actions/workflows/build.yml/badge.svg" alt="Build Status"/></a>
   <a href="LICENSE.txt"><img src="https://img.shields.io/badge/license-BSD--2--Clause-blue.svg" alt="License"/></a>
-  <img src="https://img.shields.io/badge/platform-Windows%20x86%20%7C%20x64-lightgrey.svg" alt="Platform"/>
+  <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS-lightgrey.svg" alt="Platform"/>
   <img src="https://img.shields.io/badge/C%2B%2B-17-00599C.svg" alt="C++17"/>
-  <img src="https://img.shields.io/badge/hook-MinHook-orange.svg" alt="MinHook"/>
+  <img src="https://img.shields.io/badge/hook-MinHook%20%7C%20Dyld%20Interpose-orange.svg" alt="Hook"/>
 </p>
 
 <p align="center">
-  <a href="README.md">🇨🇳 中文版</a>
+  <a href="README.md">🇨🇳 中文版</a> |
+  <a href="README_MAC.md">🍎 macOS Guide</a>
 </p>
 
 ---

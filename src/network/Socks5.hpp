@@ -1,6 +1,5 @@
 #pragma once
-#include <winsock2.h>
-#include <ws2tcpip.h>
+#include "PlatformSocket.hpp"
 #include <chrono>
 #include <limits>
 #include <string>
@@ -86,7 +85,7 @@ namespace Network {
         }
 
         // Helper to ensure exact number of bytes are read (handles TCP fragmentation)
-        static bool ReadExact(SOCKET sock, uint8_t* buf, int len, int timeoutMs) {
+        static bool ReadExact(socket_t sock, uint8_t* buf, int len, int timeoutMs) {
             // 使用统一的 IO 封装，兼容非阻塞套接字
             return SocketIo::RecvExact(sock, buf, len, timeoutMs);
         }
@@ -94,7 +93,7 @@ namespace Network {
     public:
         // Execute SOCKS5 Handshake (No Auth)
         // Returns true if tunnel is established
-        static bool Handshake(SOCKET sock, const std::string& targetHost, uint16_t targetPort, int handshakeBudgetMs = -1) {
+        static bool Handshake(socket_t sock, const std::string& targetHost, uint16_t targetPort, int handshakeBudgetMs = -1) {
             auto& config = Core::Config::Instance();
             const int recvTimeout = NormalizeTimeoutMs(config.timeout.recv_ms);
             const int sendTimeout = NormalizeTimeoutMs(config.timeout.send_ms);

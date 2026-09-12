@@ -1,6 +1,5 @@
 #pragma once
-#include <winsock2.h>
-#include <ws2tcpip.h>
+#include "PlatformSocket.hpp"
 #include <cstdint>
 #include <chrono>
 #include <limits>
@@ -35,7 +34,7 @@ inline int RemainingTimeoutMs(const std::chrono::steady_clock::time_point& deadl
 }
 
 // 使用 select 等待可读/可写，避免非阻塞套接字直接失败
-inline bool WaitReadable(SOCKET sock, int timeoutMs) {
+inline bool WaitReadable(socket_t sock, int timeoutMs) {
     if (sock == INVALID_SOCKET) {
         WSASetLastError(WSAEINVAL);
         return false;
@@ -47,14 +46,14 @@ inline bool WaitReadable(SOCKET sock, int timeoutMs) {
     timeval tv{};
     tv.tv_sec = timeoutMs / 1000;
     tv.tv_usec = (timeoutMs % 1000) * 1000;
-    int rc = select(0, &readSet, nullptr, nullptr, &tv);
+    int rc = select(static_cast<int>(sock) + 1, &readSet, nullptr, nullptr, &tv);
     if (rc > 0) return true;
     if (rc == 0) WSASetLastError(WSAETIMEDOUT);
     return false;
 }
 
 // 使用 select 等待可写，避免非阻塞套接字直接失败
-inline bool WaitWritable(SOCKET sock, int timeoutMs) {
+inline bool WaitWritable(socket_t sock, int timeoutMs) {
     if (sock == INVALID_SOCKET) {
         WSASetLastError(WSAEINVAL);
         return false;
@@ -66,18 +65,17 @@ inline bool WaitWritable(SOCKET sock, int timeoutMs) {
     timeval tv{};
     tv.tv_sec = timeoutMs / 1000;
     tv.tv_usec = (timeoutMs % 1000) * 1000;
-    int rc = select(0, nullptr, &writeSet, nullptr, &tv);
+    int rc = select(static_cast<int>(sock) + 1, nullptr, &writeSet, nullptr, &tv);
     if (rc > 0) return true;
     if (rc == 0) WSASetLastError(WSAETIMEDOUT);
     return false;
 }
 
 // 等待连接完成并检查 SO_ERROR，适配非阻塞 connect
-inline bool WaitConnect(SOCKET sock, int timeoutMs) {
+inline bool WaitConnect(socket_t sock, int timeoutMs) {
     if (!WaitWritable(sock, timeoutMs)) return false;
     int soError = 0;
-    int optLen = sizeof(soError);
-    if (getsockopt(sock, SOL_SOCKET, SO_ERROR, (char*)&soError, &optLen) != 0) {
+    if (!GetSocketError(sock, &soError)) {
         return false;
     }
     if (soError != 0) {
@@ -88,7 +86,7 @@ inline bool WaitConnect(SOCKET sock, int timeoutMs) {
 }
 
 // 确保完整发送，兼容非阻塞套接字
-inline bool SendAll(SOCKET sock, const char* data, int len, int timeoutMs) {
+inline bool SendAll(socket_t sock, const char* data, int len, int timeoutMs) {
     const auto deadline = BuildDeadline(timeoutMs);
     int totalSent = 0;
     while (totalSent < len) {
@@ -114,7 +112,7 @@ inline bool SendAll(SOCKET sock, const char* data, int len, int timeoutMs) {
 }
 
 // 精确接收指定字节数，兼容非阻塞套接字
-inline bool RecvExact(SOCKET sock, uint8_t* buf, int len, int timeoutMs) {
+inline bool RecvExact(socket_t sock, uint8_t* buf, int len, int timeoutMs) {
     const auto deadline = BuildDeadline(timeoutMs);
     int totalRead = 0;
     while (totalRead < len) {
@@ -140,7 +138,7 @@ inline bool RecvExact(SOCKET sock, uint8_t* buf, int len, int timeoutMs) {
 }
 
 // 逐字节接收直到命中分隔符，避免吞掉隧道首包数据
-inline bool RecvUntil(SOCKET sock, std::string* out, const std::string& delimiter, int timeoutMs, int maxBytes) {
+inline bool RecvUntil(socket_t sock, std::string* out, const std::string& delimiter, int timeoutMs, int maxBytes) {
     if (!out) {
         WSASetLastError(WSAEINVAL);
         return false;

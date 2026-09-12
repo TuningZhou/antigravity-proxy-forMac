@@ -610,8 +610,10 @@ namespace Core {
             return s;
         }
 
-        // 判断路径是否为绝对路径（Windows 盘符或 UNC 路径）
+        // 判断路径是否为绝对路径（支持 POSIX 根路径、Windows 盘符或 UNC 路径）
         static bool IsAbsolutePath(const std::string& path) {
+            if (path.empty()) return false;
+            if (path[0] == '/') return true;
             if (path.size() >= 2 && std::isalpha(static_cast<unsigned char>(path[0])) && path[1] == ':') {
                 return true;
             }
@@ -622,8 +624,9 @@ namespace Core {
             return false;
         }
 
-        // 获取当前 DLL 所在目录（用于定位与 DLL 同目录的配置文件）
+        // 获取当前 DLL/动态库所在目录（用于定位与库同目录的配置文件）
         static std::string GetModuleDirectory() {
+#ifdef _WIN32
             char modulePath[MAX_PATH] = {0};
             HMODULE hModule = NULL;
             if (!GetModuleHandleExA(
@@ -644,6 +647,17 @@ namespace Core {
                 }
             }
             return std::string(modulePath);
+#else
+            Dl_info info{};
+            if (dladdr(reinterpret_cast<const void*>(&GetModuleDirectory), &info) && info.dli_fname) {
+                std::string p(info.dli_fname);
+                size_t slash = p.find_last_of('/');
+                if (slash != std::string::npos) {
+                    return p.substr(0, slash);
+                }
+            }
+            return "";
+#endif
         }
 
     public:
@@ -679,6 +693,11 @@ namespace Core {
                 if (lowerName == lowerTarget) return true;
                 // 支持类似 "language_server_windows" 匹配 "language_server_windows.exe"
                 if (lowerName.find(lowerTarget) != std::string::npos) return true;
+                // 支持去除 .exe 后缀进行匹配，确保 Windows 默认配置规则在 macOS 下能正确命中无后缀二进制（如 agy.exe 匹配 agy）
+                if (lowerTarget.size() > 4 && lowerTarget.substr(lowerTarget.size() - 4) == ".exe") {
+                    std::string targetNoExe = lowerTarget.substr(0, lowerTarget.size() - 4);
+                    if (lowerName == targetNoExe || lowerName.find(targetNoExe) != std::string::npos) return true;
+                }
             }
             return false;
         }
@@ -710,15 +729,26 @@ namespace Core {
 
         bool Load(const std::string& path = "config.json") {
             try {
-                // 优先从 DLL 所在目录读取配置，避免子进程工作目录不同导致相对路径失效
+                // 优先从模块所在目录读取配置，其次尝试标准用户配置目录，最后尝试当前目录
                 std::vector<std::string> candidates;
                 if (IsAbsolutePath(path)) {
                     candidates.push_back(path);
                 } else {
                     std::string dllDir = GetModuleDirectory();
                     if (!dllDir.empty()) {
+#ifdef _WIN32
                         candidates.push_back(dllDir + "\\" + path);
+#else
+                        candidates.push_back(dllDir + "/" + path);
+#endif
                     }
+#ifndef _WIN32
+                    const char* home = getenv("HOME");
+                    if (home && *home) {
+                        candidates.push_back(std::string(home) + "/.config/antigravity-proxy/" + path);
+                        candidates.push_back(std::string(home) + "/.antigravity-proxy/" + path);
+                    }
+#endif
                     candidates.push_back(path);
                 }
 

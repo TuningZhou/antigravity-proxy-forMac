@@ -1,6 +1,5 @@
 #pragma once
-#include <winsock2.h>
-#include <ws2tcpip.h>
+#include "PlatformSocket.hpp"
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -69,10 +68,10 @@ namespace Network {
             return true;
         }
 
-        inline bool CopyPeerIpAsRelay(SOCKET tcpSock, uint16_t relayPort, sockaddr_storage* out, int* outLen) {
+        inline bool CopyPeerIpAsRelay(socket_t tcpSock, uint16_t relayPort, sockaddr_storage* out, int* outLen) {
             if (!out || !outLen) return false;
             sockaddr_storage peer{};
-            int peerLen = (int)sizeof(peer);
+            socklen_t peerLen = static_cast<socklen_t>(sizeof(peer));
             if (getpeername(tcpSock, (sockaddr*)&peer, &peerLen) != 0) {
                 return false;
             }
@@ -96,7 +95,7 @@ namespace Network {
         }
 
         // 协商 AUTH_NONE
-        inline bool NegotiateNoAuth(SOCKET tcpSock, int sendTimeoutMs, int recvTimeoutMs) {
+        inline bool NegotiateNoAuth(socket_t tcpSock, int sendTimeoutMs, int recvTimeoutMs) {
             uint8_t authRequest[3] = { Socks5::VERSION, 0x01, Socks5::AUTH_NONE };
             if (!SocketIo::SendAll(tcpSock, (const char*)authRequest, 3, sendTimeoutMs)) {
                 int err = WSAGetLastError();
@@ -122,14 +121,14 @@ namespace Network {
         }
 
         struct UdpAssociateResult {
-            SOCKET controlSock = INVALID_SOCKET;  // TCP 控制连接（调用方负责保持打开）
-            sockaddr_storage relayAddr{};         // UDP Relay 地址（用于 connect/sendto）
+            socket_t controlSock = INVALID_SOCKET;  // TCP 控制连接（调用方负责保持打开）
+            sockaddr_storage relayAddr{};           // UDP Relay 地址（用于 connect/sendto）
             int relayAddrLen = 0;
         };
 
         // SOCKS5 UDP ASSOCIATE
         // - clientAddr/clientAddrLen 可为空：将使用 0.0.0.0:0 或 ::0:0（兼容多数实现）
-        inline bool UdpAssociate(SOCKET tcpSock, const sockaddr* clientAddr, int clientAddrLen, UdpAssociateResult* out) {
+        inline bool UdpAssociate(socket_t tcpSock, const sockaddr* clientAddr, int clientAddrLen, UdpAssociateResult* out) {
             if (!out) return false;
             out->controlSock = tcpSock;
             out->relayAddrLen = 0;

@@ -11,14 +11,15 @@
 <p align="center">
   <a href="https://github.com/yuaotian/antigravity-proxy/actions"><img src="https://github.com/yuaotian/antigravity-proxy/actions/workflows/build.yml/badge.svg" alt="Build Status"/></a>
   <a href="LICENSE.txt"><img src="https://img.shields.io/badge/license-BSD--2--Clause-blue.svg" alt="License"/></a>
-  <img src="https://img.shields.io/badge/platform-Windows%20x86%20%7C%20x64-lightgrey.svg" alt="Platform"/>
+  <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS-lightgrey.svg" alt="Platform"/>
   <img src="https://img.shields.io/badge/C%2B%2B-17-00599C.svg" alt="C++17"/>
-  <img src="https://img.shields.io/badge/hook-MinHook-orange.svg" alt="MinHook"/>
+  <img src="https://img.shields.io/badge/hook-MinHook%20%7C%20Dyld%20Interpose-orange.svg" alt="Hook"/>
 </p>
 
 <p align="center">
   <a href="README_EN.md">🇬🇧 English Version</a> |
-  <a href="README_RU.md">🇷🇺 Русская версия</a>
+  <a href="README_RU.md">🇷🇺 Русская версия</a> |
+  <a href="README_MAC.md">🍎 macOS 使用与测试指南</a>
 </p>
 
 ---
@@ -33,6 +34,7 @@
 - [🔧 工作原理 / How It Works](#-工作原理--how-it-works)
 - [🛠️ 编译构建 / Build](#️-编译构建--build)
 - [📝 使用方法 / Usage](#-使用方法--usage)
+- [🍎 macOS 端使用与测试指南 / macOS Guide](README_MAC.md)
 - [🐧 WSL 环境使用指南 / WSL Guide](#-wsl-环境使用指南--wsl-guide)
 - [🚀 进阶玩法 / Advanced Usage](#-进阶玩法--advanced-usage)
 - [📄 许可证 / License](#-许可证--license)
