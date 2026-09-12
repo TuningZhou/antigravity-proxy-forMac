@@ -1,0 +1,55 @@
+{
+  "proxy": {
+    "type": "socks5",
+    "host": "127.0.0.1",
+    "port": 7890
+  },
+  "fakeIp": {
+    "enabled": true,
+    "range": "198.18.0.0/15"
+  },
+  "rules": {
+    "mode": "rules",
+    "routing": {
+      "enabled": true,
+      "rules": [
+        "domain-suffix:googleapis.com,proxy",
+        "domain-suffix:google.com,proxy",
+        "domain-suffix:gstatic.com,proxy",
+        "domain-suffix:anthropic.com,proxy",
+        "domain-suffix:openai.com,proxy",
+        "domain-keyword:antigravity,proxy",
+        "cidr:127.0.0.0/8,direct",
+        "cidr:10.0.0.0/8,direct",
+        "cidr:192.168.0.0/16,direct",
+        "cidr:::1/128,direct",
+        "cidr:fe80::/10,direct"
+      ]
+    },
+    "defaultAction": "proxy"
+  },
+  "targetProcesses": [
+    "Antigravity",
+    "Antigravity IDE",
+    "Antigravity.exe",
+    "Antigravity IDE.exe",
+    "agy",
+    "agy.exe"
+  ],
+  "childProcesses": [
+    "language_server",
+    "language_server_macos_arm64",
+    "language_server_macos_x64",
+    "language_server.exe",
+    "language_server_windows_x64.exe",
+    "node",
+    "node.exe"
+  ],
+  "childInjection": true,
+  "logging": {
+    "level": "info",
+    "maxFileSizeMB": 20,
+    "maxFiles": 5
+  },
+  "uiLoadNotify": "once"
+}
