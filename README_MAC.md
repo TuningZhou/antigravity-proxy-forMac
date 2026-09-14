@@ -7,16 +7,17 @@
 ## 目录
 
 - [一、核心实现原理](#一核心实现原理)
-- [二、Mac 电脑环境准备](#二mac-电脑环境准备)
-- [三、编译构建步骤](#三编译构建步骤)
-- [四、配置文件说明](#四配置文件说明)
-- [五、Mac 电脑测试执行流程（详细步骤）](#五mac-电脑测试执行流程详细步骤)
+- [二、普通用户使用方法 / Usage（3 步上手）](#二普通用户使用方法--usage3-步上手)
+- [三、Mac 电脑环境准备（编译依赖）](#三mac-电脑环境准备编译依赖)
+- [四、编译构建步骤](#四编译构建步骤)
+- [五、配置文件说明](#五配置文件说明)
+- [六、Mac 电脑测试执行流程（详细步骤）](#六mac-电脑测试执行流程详细步骤)
   - [测试 1：单元与回归测试验证 (CTest)](#测试-1单元与回归测试验证-ctest)
   - [测试 2：一键自测脚本 (Smoke Test)](#测试-2一键自测脚本-smoke-test)
   - [测试 3：Antigravity CLI (agy) 命令行透明代理测试](#测试-3antigravity-cli-agy-命令行透明代理测试)
   - [测试 4：Antigravity IDE 客户端透明代理测试](#测试-4antigravity-ide-客户端透明代理测试)
   - [测试 5：子进程注入与日志审查验证](#测试-5子进程注入与日志审查验证)
-- [六、macOS 常见问题与排坑指南 (SIP / 安全机制)](#六macos-常见问题与排坑指南-sip--安全机制)
+- [七、macOS 常见问题与排坑指南 (SIP / 安全机制)](#七macos-常见问题与排坑指南-sip--安全机制)
 
 ---
 
@@ -35,7 +36,148 @@ macOS 端完全采用 Apple 官方规范的 **Dyld 符号重定向 (Dyld Interpo
 
 ---
 
-## 二、Mac 电脑环境准备
+## 二、普通用户使用方法 / Usage（3 步上手）
+
+> 本节面向**不懂编程、只想让 Antigravity 正常联网**的 Mac 用户。会复制粘贴命令即可。
+
+### 先说结论：和 Windows 一样吗？
+
+**使用思路完全一样（准备代理 → 配置端口 → 启动 Antigravity），但"启动方式"不一样。**
+
+| 对比项 | Windows 电脑 | Mac 电脑 |
+| :--- | :--- | :--- |
+| 注入方式 | 把 `version.dll` 放到 `Antigravity.exe` 旁边，系统**自动加载** | 由启动脚本通过 `DYLD_INSERT_LIBRARIES` **临时注入** dylib |
+| 部署动作 | 复制文件到安装目录，会"改"程序目录 | **不修改** `Antigravity.app` 包里的任何文件，运行一次安装脚本即可 |
+| 日常启动 | **照常双击** Antigravity 图标即可 | **必须通过启动器启动**（见第 3 步），直接点图标不走代理 |
+| IDE 升级后 | 可能要重新复制 DLL | 无需重新复制文件，脚本还在就能继续用 |
+| 子进程代理 | 自动注入 | 自动注入（`posix_spawn` / `execve` 自动传播） |
+
+> ⚠️ **最重要的一句话：Mac 上每次都要用启动器打开 Antigravity 才走代理；直接从"访达 / 启动台 / 程序坞"点开 Antigravity 图标不会走代理。**
+
+### 第 1 步：准备代理 / Prepare a Proxy
+
+启动你的代理软件（Clash Verge、Surge、sing-box、V2RayU 等），确认本机监听端口：
+
+| 代理软件 | 常用端口 |
+| :--- | :--- |
+| Clash Verge / Mihomo（混合端口） | `7890` |
+| V2RayU / V2RayN（SOCKS5） | `10808` |
+| Surge（SOCKS5） | `6153` |
+
+> 具体端口**一律以你代理软件设置界面里显示的为准**。可先在终端自测（可选）：
+>
+> ```bash
+> curl -x socks5://127.0.0.1:7890 https://www.google.com -I
+> ```
+>
+> 注意：不要用 macOS 自带的 `/usr/bin/curl` 做注入验证（SIP 会拦截，详见第七节），这里仅验证代理端口本身是否可用。
+
+### 第 2 步：安装一次，改好端口 / Install & Configure
+
+在本项目目录里打开"终端"（启动台 → 其他 → 终端；不会进目录可在命令中替换成你的实际路径），执行一键安装：
+
+```bash
+./scripts/install-mac.sh
+```
+
+脚本会自动编译（首次使用需先按[第三节](#三mac-电脑环境准备编译依赖)装好 Xcode 命令行工具）并安装：
+
+- 动态库 → `~/.local/lib/libantigravity_proxy.dylib`
+- 配置文件 → `~/.config/antigravity-proxy/config.json`
+- 启动命令 → `~/.local/bin/antigravity-proxy`
+
+安装结束后，按屏幕提示把 `~/.local/bin` 加进 PATH（写入 `~/.zshrc` 后**重新打开一个终端窗口**生效）：
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+然后打开配置文件，把端口改成第 1 步记下的端口：
+
+```bash
+open -e ~/.config/antigravity-proxy/config.json
+```
+
+只需确认这一段的端口正确：
+
+```json
+"proxy": {
+  "type": "socks5",
+  "host": "127.0.0.1",
+  "port": 7890
+}
+```
+
+> 💡 **不想安装？** 也可以只在项目目录内执行 `./build.sh Release`，然后用下面第 3 步里的 `./scripts/antigravity-proxy.sh`（免安装方式）。此时请改 `output-mac/config.json` 里的端口。
+
+### 第 3 步：通过启动器启动 Antigravity / Launch via Launcher
+
+启动 **Antigravity IDE 客户端**：
+
+```bash
+# 已执行安装脚本
+antigravity-proxy app
+
+# 免安装方式（在项目根目录执行）
+./scripts/antigravity-proxy.sh app
+```
+
+启动 **agy 命令行**：
+
+```bash
+antigravity-proxy agy status
+# 免安装：./scripts/antigravity-proxy.sh agy status
+# 登录：  antigravity-proxy agy login
+```
+
+脚本会自动在 `/Applications`、`~/Applications` 查找 Antigravity；如果装在别的位置，直接传可执行文件的绝对路径：
+
+```bash
+./scripts/antigravity-proxy.sh /Applications/Antigravity.app/Contents/MacOS/Antigravity
+```
+
+启动后正常使用即可，网络流量会自动走代理，无需开启系统全局代理或 TUN 模式。🎉
+
+### ✅ 怎么确认代理生效了
+
+查看日志（与 dylib 同级的 `logs/` 目录；免安装方式即 `output-mac/logs/`）：
+
+```bash
+tail -n 30 ~/.local/lib/logs/proxy-*.log 2>/dev/null || tail -n 30 output-mac/logs/proxy-*.log
+```
+
+看到以下关键行即表示成功：
+
+```text
+[INFO] Antigravity-Proxy macOS 动态库已加载 (DYLD_INSERT_LIBRARIES)
+[INFO] 当前宿主进程: Antigravity
+[INFO] 当前进程 Antigravity 启用代理拦截模式
+[INFO] macOS 代理重定向: 目标=... 代理=127.0.0.1:7890 类型=socks5
+```
+
+### 💡 让日常使用更省事（可选）
+
+每次都要打开终端输入命令，可以设个别名，以后在终端输入 `agygo` 就启动 IDE（把路径换成你项目的实际路径）：
+
+```bash
+echo "alias agygo='$HOME/Documents/Code-Program/antigravity-proxy/scripts/antigravity-proxy.sh app'" >> ~/.zshrc
+source ~/.zshrc
+```
+
+### 🔒 首次运行的安全提示
+
+- 自己本机编译的 dylib 一般可直接使用。若提示 `Operation not permitted` 或代码签名无效，执行一次本地临时签名：
+  ```bash
+  codesign --force --sign - ~/.local/lib/libantigravity_proxy.dylib
+  # 免安装方式签 output-mac/libantigravity_proxy.dylib
+  ```
+- 若弹出"无法验证开发者"，到 **系统设置 → 隐私与安全性** 点击"仍要允许 / 仍要打开"。
+- Antigravity 升级后**不用重新复制文件**（Mac 端不修改 `.app` 包）；万一命令失效，重新执行一次 `./scripts/install-mac.sh` 即可。
+- 更多排坑见[第七节](#七macos-常见问题与排坑指南-sip--安全机制)。
+
+---
+
+## 三、Mac 电脑环境准备（编译依赖）
 
 在 Mac 电脑上执行构建与测试前，请确保安装以下开发工具：
 
@@ -54,7 +196,7 @@ macOS 端完全采用 Apple 官方规范的 **Dyld 符号重定向 (Dyld Interpo
 
 ---
 
-## 三、编译构建步骤
+## 四、编译构建步骤
 
 1. 在 Mac 电脑上拉取或切换到分支代码：
 
@@ -85,7 +227,7 @@ macOS 端完全采用 Apple 官方规范的 **Dyld 符号重定向 (Dyld Interpo
 
 ---
 
-## 四、配置文件说明
+## 五、配置文件说明
 
 macOS 端的配置逻辑与 Windows 完全一致，支持直接共用 `config.json`。
 
@@ -150,7 +292,7 @@ macOS 端的配置逻辑与 Windows 完全一致，支持直接共用 `config.js
 
 ---
 
-## 五、Mac 电脑测试执行流程（详细步骤）
+## 六、Mac 电脑测试执行流程（详细步骤）
 
 请在您的 Mac 电脑上按以下顺序逐步执行测试：
 
@@ -270,7 +412,7 @@ grep "子进程" logs/proxy-*.log
 
 ---
 
-## 六、macOS 常见问题与排坑指南 (SIP / 安全机制)
+## 七、macOS 常见问题与排坑指南 (SIP / 安全机制)
 
 ### 1. 为什么用 macOS 自带的 `/usr/bin/curl` 测试看不到日志？
 

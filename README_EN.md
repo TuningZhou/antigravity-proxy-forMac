@@ -33,6 +33,7 @@
 - [🔧 How It Works](#-how-it-works)
 - [🛠️ Build](#️-build)
 - [📝 Usage](#-usage)
+- [🍎 macOS Guide](README_MAC.md)
 - [🚀 Advanced Usage](#-advanced-usage)
 - [📄 License](#-license)
 - [👤 Author](#-author)
@@ -747,6 +748,37 @@ Target Application Directory/
 ```
 
 Launch the target application, done! 🎉
+
+### 🍎 macOS Usage
+
+> **Same mental model as Windows (prepare proxy → set port → launch Antigravity), but the launch step works differently.**
+> On Windows you drop the DLL next to the exe and **double-click as usual**. macOS has no such auto-loading mechanism: you **must launch Antigravity through the launcher** (it injects `libantigravity_proxy.dylib` via `DYLD_INSERT_LIBRARIES`), and you do **not** need to modify anything inside the `Antigravity.app` bundle. Full guide: [README_MAC.md](README_MAC.md).
+
+| Item | Windows | macOS |
+|------|---------|-------|
+| Injection | `version.dll` hijack — auto-loaded once placed | `DYLD_INSERT_LIBRARIES` — loaded on the fly by the launcher |
+| Deployment | Copy DLL + config next to the exe | Run the install script once (auto-builds); the `.app` is untouched |
+| Daily launch | Double-click the Antigravity icon as usual | **Must launch via the launcher**; clicking the icon directly does nothing |
+| After an IDE update | DLL may need to be copied again | No files to copy back |
+
+**3 steps on macOS:**
+
+1. **Prepare a proxy**: start Clash Verge / Surge / V2RayU / sing-box and note your local SOCKS5/mixed port (commonly `7890` or `10808`; check the app UI).
+2. **Install & configure** (run from the project root; the script builds and installs automatically — Xcode Command Line Tools are required on first use):
+   ```bash
+   ./scripts/install-mac.sh
+   export PATH="$HOME/.local/bin:$PATH"   # add it to ~/.zshrc as the installer suggests, then reopen Terminal
+   open -e ~/.config/antigravity-proxy/config.json   # set proxy.port to your actual proxy port
+   ```
+   Without installing, you can instead run `./build.sh Release`, edit `output-mac/config.json`, and use `./scripts/antigravity-proxy.sh`.
+3. **Launch through the launcher (required every time)**:
+   ```bash
+   antigravity-proxy app          # Antigravity IDE
+   antigravity-proxy agy status   # agy CLI (agy login works the same way)
+   ```
+
+> ⚠️ Opening Antigravity from Finder / Launchpad / the Dock does **not** route traffic through the proxy.
+> If macOS complains about the code signature on first run, run `codesign --force --sign - ~/.local/lib/libantigravity_proxy.dylib` and allow it under **System Settings → Privacy & Security**. Logs are written to `logs/proxy-*.log` next to the dylib (e.g. `~/.local/lib/logs/`). See [README_MAC.md](README_MAC.md) for the portable mode and SIP troubleshooting details.
 
 ### Configuration Reference
 
