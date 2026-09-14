@@ -15,7 +15,7 @@ int main() {
 #endif
 
     socket_t socket6 = socket(AF_INET6, SOCK_STREAM, IPPROTO_TCP);
-    assert(socket6 != INVALID_SOCKET_VALUE);
+    assert(socket6 != INVALID_SOCKET);
 
     int error = 0;
     const Network::DualStackResult result =

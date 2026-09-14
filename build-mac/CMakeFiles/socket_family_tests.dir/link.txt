@@ -1,0 +1,1 @@
+/usr/bin/c++ -O3 -DNDEBUG -arch arm64 -Wl,-search_paths_first -Wl,-headerpad_max_install_names CMakeFiles/socket_family_tests.dir/tests/test_socket_family.cpp.o -o socket_family_tests

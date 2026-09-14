@@ -11,6 +11,10 @@
 #include <spawn.h>
 #include <dlfcn.h>
 #include <errno.h>
+#include <sys/syscall.h>
+#include <mach-o/dyld.h>
+#include <mach-o/loader.h>
+#include <mach-o/nlist.h>
 
 #include <crt_externs.h>
 #include <atomic>
@@ -38,7 +42,18 @@
 
 namespace {
 
-// ============= 原生函数指针获取 (dlsym RTLD_NEXT) =============
+// ============= 原生函数指针获取 =============
+//
+// 重要：不能依赖 dlsym(RTLD_NEXT, "xxx")。在现代 macOS（实测 macOS 26）上，
+// 当本库以 __DATA,__interpose 拦截某符号后，从钩子内部调用
+// dlsym(RTLD_NEXT, 同名) 会返回【钩子自身地址】，从而 my_xxx -> RealXxx
+// -> my_xxx 无限递归直至栈溢出。
+//
+// 正确做法：遍历 dyld 已加载镜像的 Mach-O 符号表（fishhook 同款方式），
+// 只取 N_SECT 类型（镜像自身真实定义）的符号——天然跳过：
+//   - N_UNDF：本库/主程序对系统函数的未定义引用
+//   - N_INDR：libSystem 伞库的重导出桩（会重新指向被拦截的槽位）
+//   - 其它注入库（替换函数不会以系统原名作为定义名）
 
 using connect_fn = int (*)(int, const struct sockaddr*, socklen_t);
 using getaddrinfo_fn = int (*)(const char*, const char*, const struct addrinfo*, struct addrinfo**);
@@ -51,45 +66,81 @@ using posix_spawnp_fn = int (*)(pid_t*, const char*, const posix_spawn_file_acti
                                 const posix_spawnattr_t*, char* const[], char* const[]);
 using execve_fn = int (*)(const char*, char* const[], char* const[]);
 
-inline connect_fn RealConnect() {
-    static connect_fn fn = reinterpret_cast<connect_fn>(dlsym(RTLD_NEXT, "connect"));
+// 在系统镜像中按带下划线的符号名（如 "_connect"）定位真实实现地址。
+static void* ResolveSystemSymbol(const char* symbolName) {
+    const uint32_t imageCount = _dyld_image_count();
+    for (uint32_t i = 0; i < imageCount; ++i) {
+        const char* imageName = _dyld_get_image_name(i);
+        if (imageName == nullptr) continue;
+        // 仅在系统库目录中查找：connect/close/execve/posix_spawn 位于
+        // libsystem_kernel，posix_spawnp 位于 libsystem_c，
+        // getaddrinfo 系列位于 libsystem_info。
+        if (strstr(imageName, "/usr/lib/system/") == nullptr) continue;
+
+        const auto* header = reinterpret_cast<const mach_header_64*>(_dyld_get_image_header(i));
+        if (header == nullptr || header->magic != MH_MAGIC_64) continue;
+        const intptr_t slide = _dyld_get_image_vmaddr_slide(i);
+
+        const symtab_command* symtab = nullptr;
+        int64_t linkeditBase = 0;
+        const load_command* cmd = reinterpret_cast<const load_command*>(
+            reinterpret_cast<const uint8_t*>(header) + sizeof(mach_header_64));
+        for (uint32_t c = 0; c < header->ncmds; ++c) {
+            if (cmd->cmd == LC_SYMTAB) {
+                symtab = reinterpret_cast<const symtab_command*>(cmd);
+            } else if (cmd->cmd == LC_SEGMENT_64) {
+                const auto* seg = reinterpret_cast<const segment_command_64*>(cmd);
+                if (strncmp(seg->segname, "__LINKEDIT", 11) == 0) {
+                    linkeditBase = static_cast<int64_t>(seg->vmaddr) -
+                                   static_cast<int64_t>(seg->fileoff);
+                }
+            }
+            cmd = reinterpret_cast<const load_command*>(
+                reinterpret_cast<const uint8_t*>(cmd) + cmd->cmdsize);
+        }
+        if (symtab == nullptr || symtab->nsyms == 0) continue;
+
+        const auto* symbols = reinterpret_cast<const nlist_64*>(
+            static_cast<uintptr_t>(slide) + linkeditBase + symtab->symoff);
+        const char* strings = reinterpret_cast<const char*>(
+            static_cast<uintptr_t>(slide) + linkeditBase + symtab->stroff);
+        for (uint32_t n = 0; n < symtab->nsyms; ++n) {
+            const nlist_64& entry = symbols[n];
+            if (entry.n_un.n_strx == 0) continue;
+            if ((entry.n_type & N_TYPE) != N_SECT) continue; // 仅真实定义
+            if ((entry.n_type & N_EXT) == 0) continue;
+            if (strcmp(strings + entry.n_un.n_strx, symbolName) == 0) {
+                return reinterpret_cast<void*>(
+                    static_cast<uintptr_t>(slide) + entry.n_value);
+            }
+        }
+    }
+    return nullptr;
+}
+
+// 按函数指针类型解析真实系统函数（惰性、只解析一次）；符号表解析失败时
+// 最后才回退到 dlsym（正常环境下不应走到）。
+template <typename FnT>
+static FnT RealSystemFunction(const char* mangledName) {
+    static FnT fn = nullptr;
+    if (fn == nullptr) {
+        void* p = ResolveSystemSymbol(mangledName);
+        if (p == nullptr) {
+            p = dlsym(RTLD_NEXT, mangledName + 1); // 去掉前导下划线
+        }
+        fn = reinterpret_cast<FnT>(p);
+    }
     return fn;
 }
 
-inline getaddrinfo_fn RealGetaddrinfo() {
-    static getaddrinfo_fn fn = reinterpret_cast<getaddrinfo_fn>(dlsym(RTLD_NEXT, "getaddrinfo"));
-    return fn;
-}
-
-inline freeaddrinfo_fn RealFreeaddrinfo() {
-    static freeaddrinfo_fn fn = reinterpret_cast<freeaddrinfo_fn>(dlsym(RTLD_NEXT, "freeaddrinfo"));
-    return fn;
-}
-
-inline gethostbyname_fn RealGethostbyname() {
-    static gethostbyname_fn fn = reinterpret_cast<gethostbyname_fn>(dlsym(RTLD_NEXT, "gethostbyname"));
-    return fn;
-}
-
-inline close_fn RealClose() {
-    static close_fn fn = reinterpret_cast<close_fn>(dlsym(RTLD_NEXT, "close"));
-    return fn;
-}
-
-inline posix_spawn_fn RealPosixSpawn() {
-    static posix_spawn_fn fn = reinterpret_cast<posix_spawn_fn>(dlsym(RTLD_NEXT, "posix_spawn"));
-    return fn;
-}
-
-inline posix_spawnp_fn RealPosixSpawnp() {
-    static posix_spawnp_fn fn = reinterpret_cast<posix_spawnp_fn>(dlsym(RTLD_NEXT, "posix_spawnp"));
-    return fn;
-}
-
-inline execve_fn RealExecve() {
-    static execve_fn fn = reinterpret_cast<execve_fn>(dlsym(RTLD_NEXT, "execve"));
-    return fn;
-}
+inline connect_fn RealConnect() { return RealSystemFunction<connect_fn>("_connect"); }
+inline getaddrinfo_fn RealGetaddrinfo() { return RealSystemFunction<getaddrinfo_fn>("_getaddrinfo"); }
+inline freeaddrinfo_fn RealFreeaddrinfo() { return RealSystemFunction<freeaddrinfo_fn>("_freeaddrinfo"); }
+inline gethostbyname_fn RealGethostbyname() { return RealSystemFunction<gethostbyname_fn>("_gethostbyname"); }
+inline close_fn RealClose() { return RealSystemFunction<close_fn>("_close"); }
+inline posix_spawn_fn RealPosixSpawn() { return RealSystemFunction<posix_spawn_fn>("_posix_spawn"); }
+inline posix_spawnp_fn RealPosixSpawnp() { return RealSystemFunction<posix_spawnp_fn>("_posix_spawnp"); }
+inline execve_fn RealExecve() { return RealSystemFunction<execve_fn>("_execve"); }
 
 // 获取当前 dylib 的绝对路径
 static std::string GetCurrentDylibPath() {
@@ -100,35 +151,105 @@ static std::string GetCurrentDylibPath() {
     return "";
 }
 
+// 极简自旋锁：只使用原子 CAS，不经过 pthread_mutex。
+// 背景：运行环境中可能存在同样 interpose close / 锁原语的第三方注入库
+// （如沙箱库），若在 close 钩子内使用 std::mutex，可能形成
+// close -> my_close -> mutex::lock -> (拦截层) -> close 的递归环直至栈溢出。
+class TinySpinLock {
+public:
+    void lock() {
+        while (m_flag.test_and_set(std::memory_order_acquire)) {
+            // 自旋等待持有者释放
+        }
+    }
+    void unlock() {
+        m_flag.clear(std::memory_order_release);
+    }
+private:
+    std::atomic_flag m_flag = ATOMIC_FLAG_INIT;
+};
+
 // 记录自定义分配的 addrinfo 结构指针，以便安全释放
-static std::unordered_set<struct addrinfo*> g_customAddrInfos;
-static std::mutex g_customAddrInfosMtx;
+// 注意：进程退出时 C++ 全局对象先于 dyld 镜像析构器被销毁，而镜像析构器
+// （及退出阶段的 late hook）仍可能访问这些容器/锁，故刻意堆分配且永不释放，
+// 避免对已析构锁加锁导致 "mutex lock failed: Invalid argument" 崩溃。
+static std::unordered_set<struct addrinfo*>& CustomAddrInfos() {
+    static auto* s = new std::unordered_set<struct addrinfo*>();
+    return *s;
+}
+static TinySpinLock& CustomAddrInfosMtx() {
+    static auto* m = new TinySpinLock();
+    return *m;
+}
 
 // 记录 socket 目标信息
 struct SocketTargetInfo {
     std::string host;
     uint16_t port = 0;
 };
-static std::unordered_map<int, SocketTargetInfo> g_socketTargets;
-static std::mutex g_socketTargetsMtx;
+static std::unordered_map<int, SocketTargetInfo>& SocketTargets() {
+    static auto* m = new std::unordered_map<int, SocketTargetInfo>();
+    return *m;
+}
+static TinySpinLock& SocketTargetsMtx() {
+    static auto* m = new TinySpinLock();
+    return *m;
+}
 
 static void RememberSocket(int fd, const std::string& host, uint16_t port) {
     if (fd < 0 || host.empty() || port == 0) return;
-    std::lock_guard<std::mutex> lock(g_socketTargetsMtx);
-    g_socketTargets[fd] = {host, port};
+    std::lock_guard<TinySpinLock> lock(SocketTargetsMtx());
+    SocketTargets()[fd] = {host, port};
 }
 
 static void ForgetSocket(int fd) {
     if (fd < 0) return;
-    std::lock_guard<std::mutex> lock(g_socketTargetsMtx);
-    g_socketTargets.erase(fd);
+    std::lock_guard<TinySpinLock> lock(SocketTargetsMtx());
+    SocketTargets().erase(fd);
+}
+
+// 直接发起内核系统调用关闭 fd，全程不经过任何可被 interpose 的库符号
+// （close、syscall 等都可能被沙箱类注入库拦截并回调本钩子，形成递归栈溢出）。
+static int RawSyscallClose(int fd) {
+#if defined(__arm64__)
+    register long x0 __asm__("x0") = fd;
+    register long x16 __asm__("x16") = static_cast<long>(SYS_close);
+    unsigned long carry = 0;
+    __asm__ volatile("svc #0x80\n"
+                     "cset %[carry], cs"
+                     : "+r"(x0), [carry] "=r"(carry)
+                     : "r"(x16)
+                     : "cc", "memory");
+    if (carry) {
+        errno = static_cast<int>(x0);
+        return -1;
+    }
+    return static_cast<int>(x0);
+#elif defined(__x86_64__)
+    long ret = 0;
+    register long rdi __asm__("rdi") = fd;
+    __asm__ volatile("syscall"
+                     : "=a"(ret)
+                     : "0"(static_cast<long>(SYS_close)), "r"(rdi)
+                     : "rcx", "r11", "cc", "memory");
+    if (static_cast<unsigned long>(ret) > static_cast<unsigned long>(-4096L)) {
+        errno = static_cast<int>(-ret);
+        return -1;
+    }
+    return static_cast<int>(ret);
+#else
+    #error "Unsupported architecture for RawSyscallClose"
+#endif
 }
 
 } // namespace
 
 namespace Hooks {
-    static std::atomic<bool> g_installed{true};
-    static std::atomic<bool> g_networkHooksEnabled{true};
+    // 默认必须为 false：dyld 加载本库后、构造函数执行前，libSystem 初始化器
+    // （如 __malloc_init）内部就可能触发被 interpose 的 close 等函数。
+    // 此阶段 malloc/互斥锁/dlsym 均不可用，默认放行可避免早期自死锁。
+    static std::atomic<bool> g_installed{false};
+    static std::atomic<bool> g_networkHooksEnabled{false};
 
     bool IsInstalled() {
         return g_installed.load(std::memory_order_relaxed);
@@ -150,8 +271,8 @@ namespace Hooks {
     void Uninstall() {
         g_installed.store(false);
         {
-            std::lock_guard<std::mutex> lock(g_socketTargetsMtx);
-            g_socketTargets.clear();
+            std::lock_guard<TinySpinLock> lock(SocketTargetsMtx());
+            SocketTargets().clear();
         }
         Core::Logger::Info("macOS API Hook 已注销并清理状态");
     }
@@ -238,10 +359,11 @@ int my_connect(int sockfd, const struct sockaddr* addr, socklen_t addrlen) {
     if (addr->sa_family == AF_INET) {
         const auto* a4 = reinterpret_cast<const sockaddr_in*>(addr);
         targetPort = ntohs(a4->sin_port);
-        uint32_t ipHost = ntohl(a4->sin_addr.s_addr);
+        // FakeIP 的 IsFakeIP/GetDomain 均接收网络字节序地址
+        uint32_t ipNetworkOrder = a4->sin_addr.s_addr;
 
-        if (config.fakeIp.enabled && Network::FakeIP::Instance().IsFakeIP(ipHost)) {
-            targetHost = Network::FakeIP::Instance().GetDomain(ipHost);
+        if (config.fakeIp.enabled && Network::FakeIP::Instance().IsFakeIP(ipNetworkOrder)) {
+            targetHost = Network::FakeIP::Instance().GetDomain(ipNetworkOrder);
             isFakeIp = true;
         }
 
@@ -277,11 +399,13 @@ int my_connect(int sockfd, const struct sockaddr* addr, socklen_t addrlen) {
         return RealConnect()(sockfd, addr, addrlen);
     }
 
-    // 规则分流匹配 (DecideRoute)
+    // 规则分流匹配 (MatchRouting)
+    // host 为 IP 字面量时 MatchRouting 内部可直接解析，无需额外传 ip
     std::string action = "proxy";
+    std::string matchedRule;
     if (config.rules.routing.enabled) {
-        std::string matchedRule;
-        action = config.rules.DecideRoute(targetHost, targetPort, "tcp", &matchedRule);
+        config.rules.MatchRouting(targetHost, "", false, targetPort, "tcp", &action, &matchedRule);
+        action = Core::ProxyRules::ToLower(std::move(action));
     }
 
     if (action == "direct") {
@@ -383,29 +507,32 @@ int my_getaddrinfo(const char* node, const char* service,
 
     const auto& config = Core::Config::Instance();
     if (config.fakeIp.enabled) {
-        // 分配 FakeIP
-        uint32_t fakeIpHost = Network::FakeIP::Instance().GetFakeIP(node);
-        auto* ai = reinterpret_cast<struct addrinfo*>(std::calloc(1, sizeof(struct addrinfo)));
-        auto* sa = reinterpret_cast<struct sockaddr_in*>(std::calloc(1, sizeof(struct sockaddr_in)));
+        // 分配 FakeIP（Alloc 返回网络字节序，可直接写入 sin_addr）
+        uint32_t fakeIpNetwork = Network::FakeIP::Instance().Alloc(node);
+        if (fakeIpNetwork != 0) {
+            auto* ai = reinterpret_cast<struct addrinfo*>(std::calloc(1, sizeof(struct addrinfo)));
+            auto* sa = reinterpret_cast<struct sockaddr_in*>(std::calloc(1, sizeof(struct sockaddr_in)));
 
-        sa->sin_family = AF_INET;
-        sa->sin_addr.s_addr = htonl(fakeIpHost);
-        sa->sin_port = service ? htons(static_cast<uint16_t>(std::atoi(service))) : 0;
+            sa->sin_family = AF_INET;
+            sa->sin_addr.s_addr = fakeIpNetwork;
+            sa->sin_port = service ? htons(static_cast<uint16_t>(std::atoi(service))) : 0;
 
-        ai->ai_family = AF_INET;
-        ai->ai_socktype = hints ? hints->ai_socktype : SOCK_STREAM;
-        ai->ai_protocol = hints ? hints->ai_protocol : IPPROTO_TCP;
-        ai->ai_addr = reinterpret_cast<struct sockaddr*>(sa);
-        ai->ai_addrlen = sizeof(struct sockaddr_in);
-        ai->ai_canonname = strdup(node);
+            ai->ai_family = AF_INET;
+            ai->ai_socktype = hints ? hints->ai_socktype : SOCK_STREAM;
+            ai->ai_protocol = hints ? hints->ai_protocol : IPPROTO_TCP;
+            ai->ai_addr = reinterpret_cast<struct sockaddr*>(sa);
+            ai->ai_addrlen = sizeof(struct sockaddr_in);
+            ai->ai_canonname = strdup(node);
 
-        {
-            std::lock_guard<std::mutex> lock(g_customAddrInfosMtx);
-            g_customAddrInfos.insert(ai);
+            {
+                std::lock_guard<TinySpinLock> lock(CustomAddrInfosMtx());
+                CustomAddrInfos().insert(ai);
+            }
+
+            *res = ai;
+            return 0;
         }
-
-        *res = ai;
-        return 0;
+        // FakeIP 分配失败（地址池异常）时回退原始解析
     }
 
     return RealGetaddrinfo()(node, service, hints, res);
@@ -416,10 +543,10 @@ void my_freeaddrinfo(struct addrinfo* res) {
 
     bool isCustom = false;
     {
-        std::lock_guard<std::mutex> lock(g_customAddrInfosMtx);
-        auto it = g_customAddrInfos.find(res);
-        if (it != g_customAddrInfos.end()) {
-            g_customAddrInfos.erase(it);
+        std::lock_guard<TinySpinLock> lock(CustomAddrInfosMtx());
+        auto it = CustomAddrInfos().find(res);
+        if (it != CustomAddrInfos().end()) {
+            CustomAddrInfos().erase(it);
             isCustom = true;
         }
     }
@@ -443,31 +570,42 @@ struct hostent* my_gethostbyname(const char* name) {
 
     const auto& config = Core::Config::Instance();
     if (config.fakeIp.enabled) {
-        uint32_t fakeIpHost = Network::FakeIP::Instance().GetFakeIP(name);
-        static thread_local hostent s_he{};
-        static thread_local in_addr s_addr{};
-        static thread_local char* s_addrList[2] = {nullptr, nullptr};
-        static thread_local std::string s_name;
+        // 分配 FakeIP（Alloc 返回网络字节序，可直接写入 s_addr）
+        uint32_t fakeIpNetwork = Network::FakeIP::Instance().Alloc(name);
+        if (fakeIpNetwork != 0) {
+            static thread_local hostent s_he{};
+            static thread_local in_addr s_addr{};
+            static thread_local char* s_addrList[2] = {nullptr, nullptr};
+            static thread_local std::string s_name;
 
-        s_addr.s_addr = htonl(fakeIpHost);
-        s_addrList[0] = reinterpret_cast<char*>(&s_addr);
-        s_addrList[1] = nullptr;
+            s_addr.s_addr = fakeIpNetwork;
+            s_addrList[0] = reinterpret_cast<char*>(&s_addr);
+            s_addrList[1] = nullptr;
 
-        s_name = name;
-        s_he.h_name = const_cast<char*>(s_name.c_str());
-        s_he.h_aliases = nullptr;
-        s_he.h_addrtype = AF_INET;
-        s_he.h_length = sizeof(in_addr);
-        s_he.h_addr_list = s_addrList;
-        return &s_he;
+            s_name = name;
+            s_he.h_name = const_cast<char*>(s_name.c_str());
+            s_he.h_aliases = nullptr;
+            s_he.h_addrtype = AF_INET;
+            s_he.h_length = sizeof(in_addr);
+            s_he.h_addr_list = s_addrList;
+            return &s_he;
+        }
+        // FakeIP 分配失败（地址池异常）时回退原始解析
     }
 
     return RealGethostbyname()(name);
 }
 
 int my_close(int fd) {
-    ForgetSocket(fd);
-    return RealClose()(fd);
+    if (Hooks::IsInstalled()) {
+        ForgetSocket(fd);
+    }
+    // 始终直接发起原始内核系统调用关闭 fd：
+    // 1. close 无用户态缓冲/簿记语义，与 libc 包装函数完全等价；
+    // 2. 不经过 close/syscall/dlsym 等可被再次拦截的符号，避免与同样
+    //    interpose libc 的第三方注入库（如沙箱）互相回调形成递归环；
+    // 3. 极早期（malloc 尚未初始化）调用也安全。
+    return RawSyscallClose(fd);
 }
 
 // ============= 子进程拦截与环境变量自动注入 =============

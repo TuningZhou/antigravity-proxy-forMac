@@ -1,0 +1,14 @@
+/Users/mac/Documents/Code-Program/antigravity-proxy/build-mac/CMakeFiles/antigravity_proxy.dir
+/Users/mac/Documents/Code-Program/antigravity-proxy/build-mac/CMakeFiles/antigravity_tests.dir
+/Users/mac/Documents/Code-Program/antigravity-proxy/build-mac/CMakeFiles/process_name_tests.dir
+/Users/mac/Documents/Code-Program/antigravity-proxy/build-mac/CMakeFiles/udp_policy_tests.dir
+/Users/mac/Documents/Code-Program/antigravity-proxy/build-mac/CMakeFiles/socket_family_tests.dir
+/Users/mac/Documents/Code-Program/antigravity-proxy/build-mac/CMakeFiles/local_target_policy_tests.dir
+/Users/mac/Documents/Code-Program/antigravity-proxy/build-mac/CMakeFiles/fakeip_tests.dir
+/Users/mac/Documents/Code-Program/antigravity-proxy/build-mac/CMakeFiles/test.dir
+/Users/mac/Documents/Code-Program/antigravity-proxy/build-mac/CMakeFiles/edit_cache.dir
+/Users/mac/Documents/Code-Program/antigravity-proxy/build-mac/CMakeFiles/rebuild_cache.dir
+/Users/mac/Documents/Code-Program/antigravity-proxy/build-mac/CMakeFiles/list_install_components.dir
+/Users/mac/Documents/Code-Program/antigravity-proxy/build-mac/CMakeFiles/install.dir
+/Users/mac/Documents/Code-Program/antigravity-proxy/build-mac/CMakeFiles/install/local.dir
+/Users/mac/Documents/Code-Program/antigravity-proxy/build-mac/CMakeFiles/install/strip.dir

@@ -229,6 +229,7 @@ if(BUILD_TESTS)
   )
   target_include_directories(fakeip_tests PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include"
   )
   if(WIN32)
     target_link_libraries(fakeip_tests PRIVATE ws2_32)

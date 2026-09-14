@@ -14,20 +14,20 @@ int main() {
     const std::string domain1 = "api.anthropic.com";
     const std::string domain2 = "chatgpt.com";
 
-    // 1. 分配 FakeIP
-    uint32_t ip1 = fakeIp.GetFakeIP(domain1);
+    // 1. 分配 FakeIP (Alloc 返回网络字节序)
+    uint32_t ip1 = fakeIp.Alloc(domain1);
     assert(ip1 != 0);
     assert(fakeIp.IsFakeIP(ip1));
 
     // 2. 幂等性：同一域名返回同一 FakeIP
-    uint32_t ip1_again = fakeIp.GetFakeIP(domain1);
+    uint32_t ip1_again = fakeIp.Alloc(domain1);
     assert(ip1 == ip1_again);
 
     // 3. 逆向查询：根据 FakeIP 获取原域名
     assert(fakeIp.GetDomain(ip1) == domain1);
 
     // 4. 不同域名分配不同 FakeIP
-    uint32_t ip2 = fakeIp.GetFakeIP(domain2);
+    uint32_t ip2 = fakeIp.Alloc(domain2);
     assert(ip2 != 0);
     assert(ip2 != ip1);
     assert(fakeIp.IsFakeIP(ip2));
