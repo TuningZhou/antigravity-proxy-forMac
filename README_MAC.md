@@ -46,11 +46,11 @@ macOS 端完全采用 Apple 官方规范的 **Dyld 符号重定向 (Dyld Interpo
 
 | 对比项 | Windows 电脑 | Mac 电脑 |
 | :--- | :--- | :--- |
-| 注入方式 | 把 `version.dll` 放到 `Antigravity.exe` 旁边，系统**自动加载** | 由启动脚本通过 `DYLD_INSERT_LIBRARIES` **临时注入** dylib |
-| 部署动作 | 复制文件到安装目录，会"改"程序目录 | **不修改** `Antigravity.app` 包里的任何文件，运行一次安装脚本即可 |
+| 注入方式 | 把 `version.dll` 放到 `Antigravity.exe` 旁边，系统**自动加载** | 由启动器通过 `DYLD_INSERT_LIBRARIES` **临时注入** dylib |
+| 首次准备 | 复制文件到安装目录 | 下载解压即用；首次启动自动执行一次"本地签名补丁"（见下文说明） |
 | 日常启动 | **照常双击** Antigravity 图标即可 | **必须通过启动器启动**（见第 3 步），直接点图标不走代理 |
-| IDE 升级后 | 可能要重新复制 DLL | 无需重新复制文件，脚本还在就能继续用 |
-| 子进程代理 | 自动注入 | 自动注入（`posix_spawn` / `execve` 自动传播） |
+| IDE 升级后 | 可能要重新复制 DLL | 重新双击启动器一次，会自动重新应用补丁 |
+| 子进程代理 | 自动注入 | 自动注入（`posix_spawn` / `execve` 自动传播；`language_server` 自动绕过 Seatbelt 沙箱包装） |
 
 > ⚠️ **最重要的一句话：Mac 上每次都要用启动器打开 Antigravity 才走代理；直接从"访达 / 启动台 / 程序坞"点开 Antigravity 图标不会走代理。**
 
@@ -60,7 +60,7 @@ macOS 端完全采用 Apple 官方规范的 **Dyld 符号重定向 (Dyld Interpo
 
 | 代理软件 | 常用端口 |
 | :--- | :--- |
-| Clash Verge / Mihomo（混合端口） | `7890` |
+| Clash Verge / Mihomo（混合端口） | `7890`（预编译包默认值） |
 | V2RayU / V2RayN（SOCKS5） | `10808` |
 | Surge（SOCKS5） | `6153` |
 
@@ -72,47 +72,68 @@ macOS 端完全采用 Apple 官方规范的 **Dyld 符号重定向 (Dyld Interpo
 >
 > 注意：不要用 macOS 自带的 `/usr/bin/curl` 做注入验证（SIP 会拦截，详见第七节），这里仅验证代理端口本身是否可用。
 
-### 第 2 步：安装一次，改好端口 / Install & Configure
+### 第 2 步：获取程序并改好端口（两种方式任选）
 
-在本项目目录里打开"终端"（启动台 → 其他 → 终端；不会进目录可在命令中替换成你的实际路径），执行一键安装：
+#### 方式 A：下载预编译包（推荐普通用户，免编译、免装 Homebrew）
+
+1. 打开项目的 [Releases 页面](https://github.com/yuaotian/antigravity-proxy/releases)，下载最新版的
+   **`antigravity-proxy-vX.X-mac-universal2.zip`**（一个包同时支持 Apple Silicon 与 Intel）。
+2. 在"访达"里双击 zip 解压，得到 `Antigravity-Proxy-macOS` 文件夹（建议移到"应用程序"或你的用户目录）。
+3. 在 **`Antigravity-Proxy.command`** 上点**鼠标右键（或双指点按）→ 打开**，在弹窗里再点"打开"。
+   （首次必须右键打开以通过 Gatekeeper；只需操作这一次。若被拦截，可到
+   **系统设置 → 隐私与安全性** 点"仍要打开"。）
+4. 在启动器菜单选 **3**，确认/修改 `config.json` 里 `proxy.port` 为第 1 步的端口
+   （默认 `7890`，端口一致可跳过），保存后关闭文本编辑。
+
+#### 方式 B：源码一键安装（开发者）
+
+在本项目目录里打开"终端"，执行一键安装（首次使用需先按[第三节](#三mac-电脑环境准备编译依赖)装好 Xcode 命令行工具）：
 
 ```bash
 ./scripts/install-mac.sh
 ```
 
-脚本会自动编译（首次使用需先按[第三节](#三mac-电脑环境准备编译依赖)装好 Xcode 命令行工具）并安装：
+脚本会自动编译并安装：
 
-- 动态库 → `~/.local/lib/libantigravity_proxy.dylib`
+- 动态库与签名补丁脚本 → `~/.local/lib/`
 - 配置文件 → `~/.config/antigravity-proxy/config.json`
 - 启动命令 → `~/.local/bin/antigravity-proxy`
 
-安装结束后，按屏幕提示把 `~/.local/bin` 加进 PATH（写入 `~/.zshrc` 后**重新打开一个终端窗口**生效）：
+按屏幕提示把 `~/.local/bin` 加进 PATH（写入 `~/.zshrc` 后重新打开终端），再编辑配置端口：
 
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
-```
-
-然后打开配置文件，把端口改成第 1 步记下的端口：
-
-```bash
 open -e ~/.config/antigravity-proxy/config.json
 ```
 
-只需确认这一段的端口正确：
+> 💡 不想安装也可以直接 `./build.sh Release` 后用 `./scripts/antigravity-proxy.sh`（免安装方式），此时改 `output-mac/config.json`。
 
-```json
-"proxy": {
-  "type": "socks5",
-  "host": "127.0.0.1",
-  "port": 7890
-}
-```
+### 🔑 关于"本地签名补丁"（方式 A/B 首次启动都会自动执行）
 
-> 💡 **不想安装？** 也可以只在项目目录内执行 `./build.sh Release`，然后用下面第 3 步里的 `./scripts/antigravity-proxy.sh`（免安装方式）。此时请改 `output-mac/config.json` 里的端口。
+官方 Antigravity 的主程序（真名 `Electron`）、各 Helper、`language_server_macos_arm` 都启用了苹果
+**Hardened Runtime**，且未携带"允许 DYLD 环境变量"权利——不打补丁时，系统会**静默忽略**
+`DYLD_INSERT_LIBRARIES`，代理完全不生效（这是 macOS 的安全机制，与 SIP 无关，**不需要关闭 SIP**）。
+
+首次选菜单"1）启动"时，启动器会调用包内的 `mac-patch-app.sh` 自动完成：
+
+- 在**本机**对 Antigravity 做一次 ad-hoc 重签名，补上 `allow-dyld-environment-variables`
+  与 `disable-library-validation` 两个权利；**不联网、不上传、不改功能**；
+- 同时重签名包内 Helper 与 `language_server`，并做注入冒烟验证；
+- 目标在 `/Applications` 不可写时，会弹出**系统授权框**输入本机密码（与安装软件时相同）；
+- 只需执行一次。**Antigravity 升级/重装会覆盖补丁**，重新双击启动器即可自动再打一次；
+- 想完全撤销：重装官方 Antigravity 即可。
+
+此外，agent 后端 `language_server` 原本由 `sandbox-wrapper.sh → sandbox-exec` 置于 Seatbelt
+沙箱中（默认 `(deny network*)`，连不上本地代理端口，且受保护的 `sandbox-exec` 会剥除 DYLD 变量）。
+dylib 拦截到该包装脚本时会直接还原为 `language_server` 本体启动（日志中会出现
+"已绕过 Seatbelt/sandbox-exec"），使其与普通开发命令行工具拥有相同的联网/注入条件。
 
 ### 第 3 步：通过启动器启动 Antigravity / Launch via Launcher
 
-启动 **Antigravity IDE 客户端**：
+**方式 A**：双击 `Antigravity-Proxy.command` → 菜单选 **1**（首次会先自动打签名补丁，随后启动 IDE）；
+选 **2** 使用 agy 命令行（默认 `agy status`）。
+
+**方式 B**：在终端执行：
 
 ```bash
 # 已执行安装脚本
@@ -120,44 +141,43 @@ antigravity-proxy app
 
 # 免安装方式（在项目根目录执行）
 ./scripts/antigravity-proxy.sh app
-```
 
-启动 **agy 命令行**：
-
-```bash
+# agy 命令行
 antigravity-proxy agy status
-# 免安装：./scripts/antigravity-proxy.sh agy status
-# 登录：  antigravity-proxy agy login
+antigravity-proxy agy login
 ```
 
-脚本会自动在 `/Applications`、`~/Applications` 查找 Antigravity；如果装在别的位置，直接传可执行文件的绝对路径：
+启动器会自动在 `/Applications`、`~/Applications` 查找 Antigravity；装在别处时，可直接把
+**Antigravity.app 拖到启动器图标上**，或在终端传入 `.app` 路径：
 
 ```bash
-./scripts/antigravity-proxy.sh /Applications/Antigravity.app/Contents/MacOS/Antigravity
+./scripts/antigravity-proxy.sh "/Applications/Antigravity IDE.app"
 ```
 
 启动后正常使用即可，网络流量会自动走代理，无需开启系统全局代理或 TUN 模式。🎉
 
 ### ✅ 怎么确认代理生效了
 
-查看日志（与 dylib 同级的 `logs/` 目录；免安装方式即 `output-mac/logs/`）：
+查看日志（与 dylib 同级的 `logs/` 目录；方式 A 即解压文件夹内的 `logs/`，方式 B 即 `~/.local/lib/logs/`）：
 
 ```bash
 tail -n 30 ~/.local/lib/logs/proxy-*.log 2>/dev/null || tail -n 30 output-mac/logs/proxy-*.log
 ```
 
-看到以下关键行即表示成功：
+看到以下关键行即表示成功（注意主程序真名是 `Electron`）：
 
 ```text
 [INFO] Antigravity-Proxy macOS 动态库已加载 (DYLD_INSERT_LIBRARIES)
-[INFO] 当前宿主进程: Antigravity
-[INFO] 当前进程 Antigravity 启用代理拦截模式
+[INFO] 当前宿主进程: Electron (路径: .../Antigravity IDE.app/Contents/MacOS/Electron)
+[INFO] 当前进程 Electron 启用代理拦截模式
 [INFO] macOS 代理重定向: 目标=... 代理=127.0.0.1:7890 类型=socks5
+[INFO] 检测到 sandbox-wrapper 包装的 language_server_macos_arm，已绕过 Seatbelt/sandbox-exec 直接启动
 ```
 
 ### 💡 让日常使用更省事（可选）
 
-每次都要打开终端输入命令，可以设个别名，以后在终端输入 `agygo` 就启动 IDE（把路径换成你项目的实际路径）：
+把解压后的文件夹放在固定位置，以后双击 `Antigravity-Proxy.command` 选 1 即可；
+终端用户也可以设个别名（把路径换成实际路径）：
 
 ```bash
 echo "alias agygo='$HOME/Documents/Code-Program/antigravity-proxy/scripts/antigravity-proxy.sh app'" >> ~/.zshrc
@@ -166,13 +186,14 @@ source ~/.zshrc
 
 ### 🔒 首次运行的安全提示
 
-- 自己本机编译的 dylib 一般可直接使用。若提示 `Operation not permitted` 或代码签名无效，执行一次本地临时签名：
+- `.command` 首次请**右键 → 打开**；若被 Gatekeeper 拦截，到 **系统设置 → 隐私与安全性** 点"仍要打开"。
+- 若提示 dylib 代码签名无效，可在解压目录执行一次本地临时签名：
   ```bash
-  codesign --force --sign - ~/.local/lib/libantigravity_proxy.dylib
-  # 免安装方式签 output-mac/libantigravity_proxy.dylib
+  codesign --force --sign - libantigravity_proxy.dylib
   ```
-- 若弹出"无法验证开发者"，到 **系统设置 → 隐私与安全性** 点击"仍要允许 / 仍要打开"。
-- Antigravity 升级后**不用重新复制文件**（Mac 端不修改 `.app` 包）；万一命令失效，重新执行一次 `./scripts/install-mac.sh` 即可。
+- 补丁提示"正在运行"：先在 Antigravity 窗口按 **⌘Q** 完全退出，再回启动器按回车。
+- 补丁提示缺少 `codesign`：终端执行 `xcode-select --install` 安装 Apple 命令行工具。
+- Antigravity **升级后**需要重新应用一次签名补丁（启动器会自动检测并提示）。
 - 更多排坑见[第七节](#七macos-常见问题与排坑指南-sip--安全机制)。
 
 ---
@@ -421,9 +442,16 @@ grep "子进程" logs/proxy-*.log
 
 ### 2. 提示 "Operation not permitted" 或 "Code signature invalid"？
 
-- 若 macOS 提示动态库代码签名问题，可对动态库执行本地临时签名：
+- **Antigravity 本身没反应/没有代理日志**：官方程序启用了 Hardened Runtime，必须先应用
+  第二节介绍的"本地签名补丁"。重新双击 `Antigravity-Proxy.command` 选 1（或菜单 6）即可，
+  补丁会自动完成重签名与注入冒烟验证；**不需要、也不建议关闭 SIP**。
+- 若 macOS 提示的是**动态库**代码签名问题，可对动态库执行本地临时签名：
   ```bash
-  codesign --force --deep --sign - output-mac/libantigravity_proxy.dylib
+  codesign --force --sign - output-mac/libantigravity_proxy.dylib
+  ```
+- 也可单独对任意目标手动执行补丁脚本：
+  ```bash
+  ./scripts/mac-patch-app.sh "/Applications/Antigravity IDE.app" output-mac/libantigravity_proxy.dylib
   ```
 
 ### 3. 如何全局安装为系统命令？

@@ -32,58 +32,130 @@ mkdir -p "${BIN_DIR}" "${LIB_DIR}" "${CONFIG_DIR}"
 
 # 1. 复制动态库
 cp "${DYLIB_SRC}" "${LIB_DIR}/libantigravity_proxy.dylib"
-echo ">> [1/3] 已安装动态库到: ${LIB_DIR}/libantigravity_proxy.dylib"
+echo ">> [1/4] 已安装动态库到: ${LIB_DIR}/libantigravity_proxy.dylib"
 
-# 2. 复制默认配置
+# 2. 复制签名补丁脚本
+if [ -f "${SCRIPT_DIR}/mac-patch-app.sh" ]; then
+    cp "${SCRIPT_DIR}/mac-patch-app.sh" "${LIB_DIR}/mac-patch-app.sh"
+    chmod +x "${LIB_DIR}/mac-patch-app.sh"
+    echo ">> [2/4] 已安装签名补丁脚本: ${LIB_DIR}/mac-patch-app.sh"
+else
+    echo ">> [2/4] [警告] 未找到 mac-patch-app.sh，启动器将缺少自动补丁能力。"
+fi
+
+# 3. 复制默认配置
 if [ ! -f "${CONFIG_DIR}/config.json" ]; then
     if [ -f "${PROJECT_ROOT}/config.example.json" ]; then
         cp "${PROJECT_ROOT}/config.example.json" "${CONFIG_DIR}/config.json"
-        echo ">> [2/3] 已初始化默认配置: ${CONFIG_DIR}/config.json"
+        echo ">> [3/4] 已初始化默认配置: ${CONFIG_DIR}/config.json"
     fi
 else
-    echo ">> [2/3] 配置目录已有 config.json，保留现有配置。"
+    echo ">> [3/4] 配置目录已有 config.json，保留现有配置。"
 fi
 
-# 3. 生成启动器脚本
+# 4. 生成启动器脚本
 cat << 'EOF' > "${BIN_DIR}/antigravity-proxy"
 #!/usr/bin/env bash
 set -e
 
-# Antigravity-Proxy CLI Launcher
+# Antigravity-Proxy macOS Launcher（由 install-mac.sh 生成）
 DYLIB_PATH="PLACEHOLDER_LIB_DIR/libantigravity_proxy.dylib"
+PATCH_SCRIPT="PLACEHOLDER_LIB_DIR/mac-patch-app.sh"
 
 if [ ! -f "${DYLIB_PATH}" ]; then
     echo "[错误] 未找到动态库: ${DYLIB_PATH}"
     exit 1
 fi
+[ -f "${PATCH_SCRIPT}" ] && source "${PATCH_SCRIPT}"
 
-export DYLD_INSERT_LIBRARIES="${DYLIB_PATH}"
-export DYLD_FORCE_FLAT_NAMESPACE=1
+derive_app_dir() {
+    local p="$1"
+    case "${p}" in
+        *.app) echo "${p%/}"; return 0 ;;
+        *.app/*) echo "${p%%.app/*}.app"; return 0 ;;
+    esac
+    return 1
+}
+
+find_antigravity_app() {
+    local cand d
+    for cand in \
+        "/Applications/Antigravity IDE.app" \
+        "/Applications/Antigravity.app" \
+        "$HOME/Applications/Antigravity IDE.app" \
+        "$HOME/Applications/Antigravity.app"; do
+        [ -d "${cand}" ] && { echo "${cand}"; return 0; }
+    done
+    if command -v mdfind >/dev/null 2>&1; then
+        d="$(mdfind "kMDItemCFBundleIdentifier == 'com.antigravity.desktop'" 2>/dev/null | head -n 1)"
+        [ -n "${d}" ] && [ -d "${d}" ] && { echo "${d}"; return 0; }
+    fi
+    return 1
+}
+
+ensure_patch() {
+    local target="$1"
+    if ! command -v macpatch_target_needs_patch >/dev/null 2>&1; then
+        echo "[警告] 缺少补丁脚本，跳过 Hardened Runtime 检查（注入可能被系统忽略）。"
+        return 0
+    fi
+    if ! macpatch_target_needs_patch "${target}"; then
+        return 0
+    fi
+    echo "[提示] ${target} 启用了 Hardened Runtime，需要一次本地 ad-hoc 重签名才能注入。"
+    if [ -t 0 ]; then
+        local ans=""
+        read -r -p "       现在执行签名补丁吗？[Y/n] " ans
+        case "${ans}" in
+            n|N|no|NO) echo "[中止] 用户取消。"; return 1 ;;
+        esac
+    fi
+    set +e
+    macpatch_ensure_target "${target}" "${DYLIB_PATH}"
+    local rc=$?
+    set -e
+    [ "${rc}" -ne 0 ] && { echo "[中止] 补丁未成功（返回码 ${rc}）。"; return 1; }
+    return 0
+}
+
+launch_app() {
+    open -n \
+        --env DYLD_INSERT_LIBRARIES="${DYLIB_PATH}" \
+        --env DYLD_FORCE_FLAT_NAMESPACE=1 \
+        "$1"
+    echo "[完成] Antigravity 已启动。日志: PLACEHOLDER_LIB_DIR/logs/"
+}
 
 TARGET="${1:-app}"
 
 if [ "${TARGET}" = "app" ]; then
-    APP_PATH="/Applications/Antigravity.app/Contents/MacOS/Antigravity"
-    if [ ! -f "${APP_PATH}" ]; then
-        if [ -f "/Applications/Antigravity IDE.app/Contents/MacOS/Antigravity IDE" ]; then
-            APP_PATH="/Applications/Antigravity IDE.app/Contents/MacOS/Antigravity IDE"
-        fi
-    fi
-    if [ ! -f "${APP_PATH}" ]; then
-        echo "[错误] 未在 /Applications 找到 Antigravity.app！"
-        echo "用法: antigravity-proxy /path/to/executable [args...]"
-        exit 1
-    fi
-    exec "${APP_PATH}" "${@:2}"
+    APP_DIR="$(find_antigravity_app || true)"
+    [ -z "${APP_DIR}" ] && { echo "[错误] 未找到 Antigravity.app，可直接传入路径: $0 /path/to/Antigravity.app"; exit 1; }
+    ensure_patch "${APP_DIR}" || exit 1
+    echo "[启动] ${APP_DIR}"
+    launch_app "${APP_DIR}"
 elif [ "${TARGET}" = "agy" ]; then
-    AGY_PATH="$(which agy 2>/dev/null || echo "$HOME/.antigravity/bin/agy")"
-    if [ ! -f "${AGY_PATH}" ]; then
-        echo "[错误] 未找到 agy CLI 命令！"
+    AGY_PATH="$(command -v agy 2>/dev/null || true)"
+    [ -z "${AGY_PATH}" ] && [ -f "$HOME/.antigravity/bin/agy" ] && AGY_PATH="$HOME/.antigravity/bin/agy"
+    [ -z "${AGY_PATH}" ] && [ -f "$HOME/.local/bin/agy" ] && AGY_PATH="$HOME/.local/bin/agy"
+    [ -z "${AGY_PATH}" ] && { echo "[错误] 未找到 agy CLI 命令！"; exit 1; }
+    ensure_patch "${AGY_PATH}" || exit 1
+    echo "[启动] ${AGY_PATH}"
+    DYLD_INSERT_LIBRARIES="${DYLIB_PATH}" DYLD_FORCE_FLAT_NAMESPACE=1 exec "${AGY_PATH}" "${@:2}"
+else
+    if [ ! -e "${TARGET}" ]; then
+        echo "[错误] 目标不存在: ${TARGET}"
         exit 1
     fi
-    exec "${AGY_PATH}" "${@:2}"
-else
-    exec "${TARGET}" "${@:2}"
+    APP_OF_CUSTOM="$(derive_app_dir "${TARGET}" || true)"
+    if [ -n "${APP_OF_CUSTOM}" ]; then
+        ensure_patch "${APP_OF_CUSTOM}" || exit 1
+        echo "[启动] ${APP_OF_CUSTOM}"
+        launch_app "${APP_OF_CUSTOM}"
+    else
+        echo "[启动] ${TARGET}"
+        DYLD_INSERT_LIBRARIES="${DYLIB_PATH}" DYLD_FORCE_FLAT_NAMESPACE=1 exec "${TARGET}" "${@:2}"
+    fi
 fi
 EOF
 
@@ -91,7 +163,7 @@ sed -i '' "s|PLACEHOLDER_LIB_DIR|${LIB_DIR}|g" "${BIN_DIR}/antigravity-proxy" 2>
 sed -i "s|PLACEHOLDER_LIB_DIR|${LIB_DIR}|g" "${BIN_DIR}/antigravity-proxy"
 chmod +x "${BIN_DIR}/antigravity-proxy"
 
-echo ">> [3/3] 已生成全局启动命令: ${BIN_DIR}/antigravity-proxy"
+echo ">> [4/4] 已生成全局启动命令: ${BIN_DIR}/antigravity-proxy"
 echo ""
 echo "=================================================="
 echo " 安装成功！"
@@ -99,7 +171,7 @@ echo " 请确保 ${BIN_DIR} 已加入您的 PATH 环境变量 (例如在 ~/.zshr
 echo "   export PATH=\"${BIN_DIR}:\$PATH\""
 echo ""
 echo " 使用方法:"
-echo "   antigravity-proxy app      # 启动 Antigravity IDE 客户端"
+echo "   antigravity-proxy app      # 启动 Antigravity IDE（首次会引导签名补丁）"
 echo "   antigravity-proxy agy      # 启动 agy 命令行工具"
-echo "   antigravity-proxy <cmd>    # 代理任意可执行程序"
+echo "   antigravity-proxy <path>   # 代理指定的 .app 或可执行程序"
 echo "=================================================="

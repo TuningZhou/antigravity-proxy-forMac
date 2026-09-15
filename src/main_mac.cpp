@@ -127,9 +127,12 @@ static void OnDylibLoad() {
     const auto& config = Core::Config::Instance();
 
     // 2. 判断当前进程是否属于目标拦截进程或子进程
+    //    macOS 兜底：真实主程序名为 Electron、agent 后端为 language_server_macos_arm，
+    //    它们的进程名不在配置列表中，但全路径都位于 Antigravity app 包内。
     const bool isTarget = config.ShouldInject(processName);
     const bool isChildTarget = config.ShouldInjectChildProcess(processName);
-    const bool shouldHook = isTarget || isChildTarget;
+    const bool isBundleProcess = Hooks::IsAntigravityRelatedMacProcess(processPath, processName);
+    const bool shouldHook = isTarget || isChildTarget || isBundleProcess;
 
     if (!shouldHook) {
         Core::Logger::Info("当前进程 " + processName + " 不在 targetProcesses 或 childProcesses 目标列表中，进入旁路模式");

@@ -68,3 +68,38 @@ jobs:
           output/使用说明.md
         if-no-files-found: error
         retention-days: 7
+
+  build-mac:
+    name: Build macOS universal2
+    runs-on: macos-14
+    timeout-minutes: 30
+
+    steps:
+    - name: 检出仓库
+      uses: actions/checkout@v6
+
+    # 从 build.ps1 读取版本号（BSD sed 不支持 \s，必须使用 [[:space:]]）
+    - name: 读取版本号
+      shell: bash
+      run: |
+        set -euo pipefail
+        version="$(sed -nE 's/^[[:space:]]*\$Version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' build.ps1 | head -n 1)"
+        if [ -z "${version}" ]; then
+          echo "未在 build.ps1 中找到版本号" >&2
+          exit 1
+        fi
+        echo "BUILD_VERSION=${version}" >> "${GITHUB_ENV}"
+
+    # package-mac.sh 会先跑 build.sh Release（含 ctest 回归测试）再打包
+    - name: 编译、测试并打包 Universal2 预编译包
+      shell: bash
+      run: ./scripts/package-mac.sh --version "${BUILD_VERSION}" --arch universal
+
+    - name: 上传 macOS 预编译包
+      uses: actions/upload-artifact@v7
+      with:
+        name: antigravity-proxy-v${{ env.BUILD_VERSION }}-mac-universal2
+        path: dist/antigravity-proxy-v*-mac-universal2.zip
+        if-no-files-found: error
+        compression-level: 0
+        retention-days: 7

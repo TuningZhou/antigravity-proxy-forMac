@@ -610,22 +610,85 @@ int my_close(int fd) {
 
 // ============= 子进程拦截与环境变量自动注入 =============
 
+// Antigravity 的 language_server 通过 sandbox-wrapper.sh
+//（/bin/bash 脚本 → /usr/bin/sandbox-exec）启动，存在两个阻断：
+//   1) /bin/bash 与 sandbox-exec 都是受保护平台二进制，DYLD_INSERT_LIBRARIES
+//      穿过它们时会被 AMFI 剥除，真正的 language_server 收不到注入变量；
+//   2) 生成的 Seatbelt 策略含 (deny network*)，连 127.0.0.1:7890 本地代理也拒。
+// 检测到该包装脚本时，直接还原为真实的 language_server 命令行启动，
+// 代价是 language_server 不再受 Seatbelt 文件/网络限制（与普通开发工具相同）。
+struct UnwrappedCommand {
+    std::string path;
+    std::vector<std::string> argsStorage;
+    std::vector<char*> argv;
+    bool valid = false;
+};
+
+static UnwrappedCommand TryUnwrapSandboxWrapper(const char* path, char* const argv[]) {
+    UnwrappedCommand result;
+    if (!path || !argv) return result;
+
+    const std::string wrapperPath = path;
+    const std::string wrapperBase = Hooks::ExtractBaseNameFromPathLike(wrapperPath);
+    if (wrapperBase.find("sandbox-wrapper") == std::string::npos) return result;
+
+    int idx = 1;
+    if (argv[idx] != nullptr && std::string(argv[idx]) == "--allow-network") idx = 2;
+    const char* cmd = argv[idx];
+    if (cmd == nullptr) return result;
+
+    result.path = cmd;
+    // 仅对包内的 language_server 解包，避免误伤同名包装脚本
+    if (result.path.find("language_server") == std::string::npos) return result;
+
+    // 相对路径时按 wrapper 所在目录解析
+    if (result.path.empty() || result.path[0] != '/') {
+        const auto slash = wrapperPath.find_last_of('/');
+        if (slash != std::string::npos) {
+            const std::string candidate = wrapperPath.substr(0, slash + 1) + result.path;
+            if (::access(candidate.c_str(), F_OK) == 0) result.path = candidate;
+        }
+    }
+
+    result.argsStorage.push_back(result.path);
+    for (int i = idx + 1; argv[i] != nullptr; ++i) {
+        result.argsStorage.emplace_back(argv[i]);
+    }
+    for (auto& arg : result.argsStorage) result.argv.push_back(&arg[0]);
+    result.argv.push_back(nullptr);
+    result.valid = true;
+    return result;
+}
+
 int my_posix_spawn(pid_t* pid, const char* path,
                    const posix_spawn_file_actions_t* file_actions,
                    const posix_spawnattr_t* attrp,
                    char* const argv[], char* const envp[]) {
     if (!Hooks::IsInstalled() || !path) return RealPosixSpawn()(pid, path, file_actions, attrp, argv, envp);
 
-    std::string baseName = Hooks::ExtractBaseNameFromPathLike(path);
+    auto unwrapped = TryUnwrapSandboxWrapper(path, argv);
+    const char* effectivePath = unwrapped.valid ? unwrapped.path.c_str() : path;
+    char* const* effectiveArgv = unwrapped.valid ? unwrapped.argv.data() : argv;
+
+    std::string baseName = Hooks::ExtractBaseNameFromPathLike(effectivePath);
     const auto& config = Core::Config::Instance();
 
-    if (config.childInjection && config.ShouldInjectChildProcess(baseName)) {
+    // 配置名单之外，再按全路径兜底 Antigravity 包内进程（各 Helper、language_server）
+    const bool injectThisChild = config.childInjection &&
+        (config.ShouldInjectChildProcess(baseName) ||
+         Hooks::IsAntigravityRelatedMacProcess(effectivePath, baseName));
+
+    if (injectThisChild) {
         std::string dylibPath = GetCurrentDylibPath();
         if (!dylibPath.empty()) {
+            if (unwrapped.valid) {
+                Core::Logger::Info("[成功] 检测到 sandbox-wrapper 包装的 " + baseName +
+                                   "，已绕过 Seatbelt/sandbox-exec 直接启动（保证注入与本地代理连通）");
+            }
             Core::Logger::Info("[成功] 拦截到子进程派生 (posix_spawn): " + baseName + "，正在注入 DYLD_INSERT_LIBRARIES");
             auto envList = BuildInjectedEnv(envp, dylibPath);
             auto charPtrs = ToCharPtrArray(envList);
-            return RealPosixSpawn()(pid, path, file_actions, attrp, argv, charPtrs.data());
+            return RealPosixSpawn()(pid, effectivePath, file_actions, attrp, effectiveArgv, charPtrs.data());
         }
     }
 
@@ -638,16 +701,30 @@ int my_posix_spawnp(pid_t* pid, const char* file,
                     char* const argv[], char* const envp[]) {
     if (!Hooks::IsInstalled() || !file) return RealPosixSpawnp()(pid, file, file_actions, attrp, argv, envp);
 
-    std::string baseName = Hooks::ExtractBaseNameFromPathLike(file);
+    auto unwrapped = TryUnwrapSandboxWrapper(file, argv);
+    const char* effectivePath = unwrapped.valid ? unwrapped.path.c_str() : file;
+    char* const* effectiveArgv = unwrapped.valid ? unwrapped.argv.data() : argv;
+
+    std::string baseName = Hooks::ExtractBaseNameFromPathLike(effectivePath);
     const auto& config = Core::Config::Instance();
 
-    if (config.childInjection && config.ShouldInjectChildProcess(baseName)) {
+    // posix_spawnp 的 file 可能是 PATH 相对名，路径兜底失效时仍有进程名/名单判断
+    const bool injectThisChild = config.childInjection &&
+        (config.ShouldInjectChildProcess(baseName) ||
+         Hooks::IsLanguageServerProcessName(baseName) ||
+         Hooks::IsAntigravityBundlePath(effectivePath));
+
+    if (injectThisChild) {
         std::string dylibPath = GetCurrentDylibPath();
         if (!dylibPath.empty()) {
+            if (unwrapped.valid) {
+                Core::Logger::Info("[成功] 检测到 sandbox-wrapper 包装的 " + baseName +
+                                   "，已绕过 Seatbelt/sandbox-exec 直接启动（保证注入与本地代理连通）");
+            }
             Core::Logger::Info("[成功] 拦截到子进程派生 (posix_spawnp): " + baseName + "，正在注入 DYLD_INSERT_LIBRARIES");
             auto envList = BuildInjectedEnv(envp, dylibPath);
             auto charPtrs = ToCharPtrArray(envList);
-            return RealPosixSpawnp()(pid, file, file_actions, attrp, argv, charPtrs.data());
+            return RealPosixSpawnp()(pid, effectivePath, file_actions, attrp, effectiveArgv, charPtrs.data());
         }
     }
 
@@ -657,16 +734,29 @@ int my_posix_spawnp(pid_t* pid, const char* file,
 int my_execve(const char* path, char* const argv[], char* const envp[]) {
     if (!Hooks::IsInstalled() || !path) return RealExecve()(path, argv, envp);
 
-    std::string baseName = Hooks::ExtractBaseNameFromPathLike(path);
+    auto unwrapped = TryUnwrapSandboxWrapper(path, argv);
+    const char* effectivePath = unwrapped.valid ? unwrapped.path.c_str() : path;
+    char* const* effectiveArgv = unwrapped.valid ? unwrapped.argv.data() : argv;
+
+    std::string baseName = Hooks::ExtractBaseNameFromPathLike(effectivePath);
     const auto& config = Core::Config::Instance();
 
-    if (config.childInjection && config.ShouldInjectChildProcess(baseName)) {
+    // 配置名单之外，再按全路径兜底 Antigravity 包内进程（各 Helper、language_server）
+    const bool injectThisChild = config.childInjection &&
+        (config.ShouldInjectChildProcess(baseName) ||
+         Hooks::IsAntigravityRelatedMacProcess(effectivePath, baseName));
+
+    if (injectThisChild) {
         std::string dylibPath = GetCurrentDylibPath();
         if (!dylibPath.empty()) {
+            if (unwrapped.valid) {
+                Core::Logger::Info("[成功] 检测到 sandbox-wrapper 包装的 " + baseName +
+                                   "，已绕过 Seatbelt/sandbox-exec 直接启动（保证注入与本地代理连通）");
+            }
             Core::Logger::Info("[成功] 拦截到进程替换 (execve): " + baseName + "，正在注入 DYLD_INSERT_LIBRARIES");
             auto envList = BuildInjectedEnv(envp, dylibPath);
             auto charPtrs = ToCharPtrArray(envList);
-            return RealExecve()(path, argv, charPtrs.data());
+            return RealExecve()(effectivePath, effectiveArgv, charPtrs.data());
         }
     }
 

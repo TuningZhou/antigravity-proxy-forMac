@@ -93,4 +93,20 @@ inline bool IsAntigravityHostProcessName(const std::string& processName) {
            lowerName == "antigravity ide";
 }
 
+// macOS 上 Antigravity IDE 的真实主程序名为 Electron（包内各 Helper 名为
+// "Antigravity IDE Helper (Renderer/GPU/...)"，agent 后端为
+// language_server_macos_arm），仅按进程名匹配会漏掉这些进程。
+// 兜底规则：可执行文件全路径（大小写不敏感）位于 Antigravity app 包内即命中。
+inline bool IsAntigravityBundlePath(const std::string& processPath) {
+    const std::string lowerPath = ToLowerAsciiCopy(processPath);
+    return lowerPath.find("antigravity") != std::string::npos;
+}
+
+// macOS 进程是否属于需要代理的 Antigravity 相关进程（进程名 + 全路径双重判断）
+inline bool IsAntigravityRelatedMacProcess(const std::string& processPath,
+                                           const std::string& processName) {
+    return IsLanguageServerProcessName(processName) ||
+           IsAntigravityBundlePath(processPath);
+}
+
 } // namespace Hooks

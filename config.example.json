@@ -33,15 +33,21 @@
     "Antigravity IDE",
     "Antigravity.exe",
     "Antigravity IDE.exe",
+    "Electron",
     "agy",
     "agy.exe"
   ],
   "childProcesses": [
     "language_server",
+    "language_server_macos_arm",
     "language_server_macos_arm64",
     "language_server_macos_x64",
     "language_server.exe",
     "language_server_windows_x64.exe",
+    "Antigravity IDE Helper",
+    "Antigravity IDE Helper (Renderer)",
+    "Antigravity IDE Helper (GPU)",
+    "Antigravity IDE Helper (Plugin)",
     "node",
     "node.exe"
   ],

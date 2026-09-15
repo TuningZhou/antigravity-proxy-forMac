@@ -163,7 +163,7 @@ Have you ever encountered these situations?
 
 ### Step 1: Prepare a Proxy
 
-Start your proxy client (e.g. Clash/Mihomo) and make sure you have a local SOCKS5 or HTTP proxy endpoint (e.g. `127.0.0.1:7890`).
+Start your proxy client (e.g. Clash/Mihomo) and make sure you have a local SOCKS5 or HTTP proxy endpoint (e.g. `127.0.0.1:10808`).
 
 <details>
 <summary><b>📋 Common Proxy Software Port Reference (Click to expand)</b></summary>
@@ -172,18 +172,18 @@ Start your proxy client (e.g. Clash/Mihomo) and make sure you have a local SOCKS
 
 | Proxy Software | SOCKS5 Port | HTTP Port | Mixed Port | Notes |
 |----------------|-------------|-----------|------------|-------|
-| **Clash / Clash Verge** | 7891 | 7890 | 7890 | Mixed port supports both SOCKS5 and HTTP |
-| **Clash for Windows** | 7891 | 7890 | 7890 | Settings → Ports to view/modify |
-| **Mihomo (Clash Meta)** | 7891 | 7890 | 7890 | Same as Clash config format |
+| **Clash / Clash Verge** | 7891 | 10808 | 10808 | Mixed port supports both SOCKS5 and HTTP |
+| **Clash for Windows** | 7891 | 10808 | 10808 | Settings → Ports to view/modify |
+| **Mihomo (Clash Meta)** | 7891 | 10808 | 10808 | Same as Clash config format |
 | **V2RayN** | 10808 | 10809 | - | Settings → Basic Settings → Core |
 | **V2RayA** | 20170 | 20171 | - | Configurable in admin panel |
 | **Shadowsocks** | 1080 | - | - | SOCKS5 only, no HTTP |
 | **ShadowsocksR** | 1080 | - | - | SOCKS5 only, no HTTP |
-| **Surge (Mac/iOS)** | 6153 | 6152 | - | Ports may differ in enhanced mode |
+| **Surge (Mac/iOS)** | 10808 | 6152 | - | Ports may differ in enhanced mode |
 | **Qv2ray** | 1089 | 8889 | - | Preferences → Inbound Settings |
 | **sing-box** | Custom | Custom | Custom | Must be manually specified in config |
 | **NekoBox** | 2080 | 2081 | - | Settings → Inbound |
-| **Clash Meta for Android** | 7891 | 7890 | 7890 | Same as Clash rules |
+| **Clash Meta for Android** | 7891 | 10808 | 10808 | Same as Clash rules |
 
 > 💡 **SOCKS5 is recommended**: This tool has better support for SOCKS5, so use it when possible.
 
@@ -197,8 +197,8 @@ Start your proxy client (e.g. Clash/Mihomo) and make sure you have a local SOCKS
 # Test SOCKS5 port (default 7891)
 Test-NetConnection -ComputerName 127.0.0.1 -Port 7891
 
-# Test HTTP port (default 7890)
-Test-NetConnection -ComputerName 127.0.0.1 -Port 7890
+# Test HTTP port (default 10808)
+Test-NetConnection -ComputerName 127.0.0.1 -Port 10808
 ```
 
 **Method 3: curl Test (requires curl)**
@@ -207,14 +207,14 @@ Test-NetConnection -ComputerName 127.0.0.1 -Port 7890
 curl -x socks5://127.0.0.1:7891 https://www.google.com -I
 
 # Test via HTTP proxy
-curl -x http://127.0.0.1:7890 https://www.google.com -I
+curl -x http://127.0.0.1:10808 https://www.google.com -I
 ```
 
 #### Common Port Issues and Solutions
 
 | Problem | Cause | Solution |
 |---------|-------|----------|
-| Port in use | Another program is using the port | `netstat -ano | findstr :7890` to find the process |
+| Port in use | Another program is using the port | `netstat -ano | findstr :10808` to find the process |
 | Connection refused | Proxy not running or wrong port | Confirm proxy is running, check port config |
 | No response | Firewall blocking | Check Windows Firewall settings |
 
@@ -352,7 +352,7 @@ cd "$env:TEMP\antigravity-proxy-logs"
 
 ```powershell
 # Test SOCKS5/mixed port
-Test-NetConnection -ComputerName 127.0.0.1 -Port 7890
+Test-NetConnection -ComputerName 127.0.0.1 -Port 10808
 
 # If TcpTestSucceeded: False, port is not listening
 ```
@@ -363,9 +363,9 @@ Check in Clash config file:
 
 ```yaml
 # Must enable mixed or SOCKS5 port
-mixed-port: 7890     # Mixed port (recommended)
+mixed-port: 10808     # Mixed port (recommended)
 # Or
-port: 7890           # HTTP port
+port: 10808           # HTTP port
 socks-port: 7891     # SOCKS5 port
 
 # If LAN access is needed
@@ -446,7 +446,7 @@ If your environment works but a friend's doesn't, compare these:
 |------|------------|-------------|
 | Windows version (winver) | | |
 | Clash version | | |
-| Proxy port | 7890 | |
+| Proxy port | 10808 | |
 | Proxy type | socks5 | |
 | Security software installed | | |
 | `netsh winsock show catalog` line count | | |
@@ -711,7 +711,7 @@ Edit `config.json`:
 {
     "proxy": {
         "host": "127.0.0.1",
-        "port": 7890,
+        "port": 10808,
         "type": "socks5"
     },
     "fake_ip": {
@@ -752,40 +752,42 @@ Launch the target application, done! 🎉
 ### 🍎 macOS Usage
 
 > **Same mental model as Windows (prepare proxy → set port → launch Antigravity), but the launch step works differently.**
-> On Windows you drop the DLL next to the exe and **double-click as usual**. macOS has no such auto-loading mechanism: you **must launch Antigravity through the launcher** (it injects `libantigravity_proxy.dylib` via `DYLD_INSERT_LIBRARIES`), and you do **not** need to modify anything inside the `Antigravity.app` bundle. Full guide: [README_MAC.md](README_MAC.md).
+> On Windows you drop the DLL next to the exe and **double-click as usual**. macOS has no such auto-loading mechanism: you **must launch Antigravity through the launcher** (it injects `libantigravity_proxy.dylib` via `DYLD_INSERT_LIBRARIES`). Full guide: [README_MAC.md](README_MAC.md).
 
 | Item | Windows | macOS |
 |------|---------|-------|
 | Injection | `version.dll` hijack — auto-loaded once placed | `DYLD_INSERT_LIBRARIES` — loaded on the fly by the launcher |
-| Deployment | Copy DLL + config next to the exe | Run the install script once (auto-builds); the `.app` is untouched |
-| Daily launch | Double-click the Antigravity icon as usual | **Must launch via the launcher**; clicking the icon directly does nothing |
-| After an IDE update | DLL may need to be copied again | No files to copy back |
+| Distribution | Build yourself / Release zips | **Recommended: prebuilt `mac-universal2.zip` from Releases** — no compilation needed; source install also available |
+| First-time setup | Copy DLL + config next to the exe | Unzip, right-click-open the launcher; first launch auto-applies a **local signing patch** (ad-hoc re-sign of the stock Hardened Runtime — offline, no SIP disable) |
+| Daily launch | Double-click the Antigravity icon as usual | **Must launch via the launcher**; clicking the icon directly bypasses the proxy |
+| After an IDE update | DLL may need to be copied again | Run the launcher once more — it re-applies the patch automatically |
 
-**3 steps on macOS:**
+**Option A — prebuilt package (recommended, no toolchain):**
 
-1. **Prepare a proxy**: start Clash Verge / Surge / V2RayU / sing-box and note your local SOCKS5/mixed port (commonly `7890` or `10808`; check the app UI).
-2. **Install & configure** (run from the project root; the script builds and installs automatically — Xcode Command Line Tools are required on first use):
-   ```bash
-   ./scripts/install-mac.sh
-   export PATH="$HOME/.local/bin:$PATH"   # add it to ~/.zshrc as the installer suggests, then reopen Terminal
-   open -e ~/.config/antigravity-proxy/config.json   # set proxy.port to your actual proxy port
-   ```
-   Without installing, you can instead run `./build.sh Release`, edit `output-mac/config.json`, and use `./scripts/antigravity-proxy.sh`.
-3. **Launch through the launcher (required every time)**:
-   ```bash
-   antigravity-proxy app          # Antigravity IDE
-   antigravity-proxy agy status   # agy CLI (agy login works the same way)
-   ```
+1. **Prepare a proxy**: start Clash Verge / Surge / V2RayU / sing-box and note your local SOCKS5/mixed port (the package defaults to `7890`; check the app UI).
+2. Download **`antigravity-proxy-vX.X-mac-universal2.zip`** from [Releases](https://github.com/yuaotian/antigravity-proxy/releases), unzip, then **right-click → Open** on `Antigravity-Proxy.command`, choose menu item **3** to verify/change the proxy port.
+3. Choose menu item **1** to launch (the first run applies the local signing patch and runs an injection smoke test); choose **2** for the agy CLI.
+
+**Option B — install from source (developers):**
+
+```bash
+./scripts/install-mac.sh                                         # builds + installs (run xcode-select --install first)
+export PATH="$HOME/.local/bin:$PATH"                            # add it to ~/.zshrc as suggested
+open -e ~/.config/antigravity-proxy/config.json                # set proxy.port
+antigravity-proxy app                                           # launch through the launcher
+# portable alternative: ./build.sh Release && ./scripts/antigravity-proxy.sh app
+```
 
 > ⚠️ Opening Antigravity from Finder / Launchpad / the Dock does **not** route traffic through the proxy.
-> If macOS complains about the code signature on first run, run `codesign --force --sign - ~/.local/lib/libantigravity_proxy.dylib` and allow it under **System Settings → Privacy & Security**. Logs are written to `logs/proxy-*.log` next to the dylib (e.g. `~/.local/lib/logs/`). See [README_MAC.md](README_MAC.md) for the portable mode and SIP troubleshooting details.
+> 🔑 The stock binaries use Hardened Runtime without DYLD-injection entitlements, so the **first launch must apply the local signing patch** (`scripts/mac-patch-app.sh`): local-only, offline, does not change app functionality; it must be re-applied after an IDE update; disabling SIP is **not** required. If the patch says the app is running, quit it with ⌘Q first.
+> Logs are written to `logs/proxy-*.log` next to the dylib (`logs/` inside the unzipped folder for the prebuilt package). Success markers include `当前宿主进程: Electron` and `已绕过 Seatbelt/sandbox-exec` ("Seatbelt/sandbox-exec bypassed"). See [README_MAC.md](README_MAC.md) for manual patching and SIP details.
 
 ### Configuration Reference
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `proxy.host` | string | `"127.0.0.1"` | Proxy server address |
-| `proxy.port` | int | `7890` | Proxy server port |
+| `proxy.port` | int | `10808` | Proxy server port |
 | `proxy.type` | string | `"socks5"` | Proxy type: `socks5` or `http` (`https` is accepted and treated as `http`) |
 | `fake_ip.enabled` | bool | `true` | Enable FakeIP system |
 | `fake_ip.cidr` | string | `"198.18.0.0/15"` | FakeIP address range (benchmarking reserved) |
@@ -867,7 +869,7 @@ Want Chrome, VS Code, or other programs to use proxy? Just modify the configurat
 {
     "proxy": {
         "host": "127.0.0.1",
-        "port": 7890,
+        "port": 10808,
         "type": "socks5"
     },
     "child_injection": true,

@@ -788,33 +788,35 @@ target_link_libraries(version PRIVATE ws2_32)
 ### 🍎 macOS 用户使用方法 / macOS Usage
 
 > **使用思路和 Windows 一样（准备代理 → 配置端口 → 启动 Antigravity），但"启动方式"不同。**
-> Windows 把 DLL 放到 exe 旁边后即可**照常双击启动**；macOS 没有这种自动加载机制，**必须通过启动器打开 Antigravity**（由启动器注入 `libantigravity_proxy.dylib`），且**不需要修改** `Antigravity.app` 包内任何文件。完整图文指南见 [README_MAC.md](README_MAC.md)。
+> Windows 把 DLL 放到 exe 旁边后即可**照常双击启动**；macOS 没有这种自动加载机制，**必须通过启动器打开 Antigravity**（由启动器注入 `libantigravity_proxy.dylib`）。完整图文指南见 [README_MAC.md](README_MAC.md)。
 
 | 对比项 | Windows | macOS |
 |--------|---------|-------|
 | 注入方式 | `version.dll` 劫持，放文件即自动加载 | `DYLD_INSERT_LIBRARIES` 注入，启动器临时加载 |
-| 部署动作 | 复制 DLL + config 到 exe 同级目录 | 运行一次安装脚本（自动编译），不动 `.app` |
+| 获取方式 | 自行编译或 Release 产物 | **推荐直接下载 Release 的 `mac-universal2.zip` 免编译包**；也可源码安装 |
+| 首次准备 | 复制 DLL + config 到 exe 同级 | 解压后右键打开启动器；首次启动自动执行一次"本地签名补丁"（ad-hoc 重签官方 Hardened Runtime，不联网、不需关 SIP） |
 | 日常启动 | 照常双击 Antigravity 图标 | **必须用启动器启动**，直接点图标不走代理 |
-| IDE 升级后 | 可能需重新复制 DLL | 无需重新复制文件 |
+| IDE 升级后 | 可能需重新复制 DLL | 重新双击启动器一次，自动重新应用补丁 |
 
-**macOS 3 步上手：**
+**macOS 方式 A：预编译包（推荐，免编译）3 步上手：**
 
-1. **准备代理**：启动 Clash Verge / Surge / V2RayU 等，记下本机 SOCKS5/混合端口（常见 `7890` 或 `10808`，以软件界面为准）。
-2. **安装并配置**（在项目根目录执行，脚本会自动完成编译与安装；首次使用需先装好 Xcode 命令行工具）：
-   ```bash
-   ./scripts/install-mac.sh
-   export PATH="$HOME/.local/bin:$PATH"   # 按安装提示写入 ~/.zshrc 后重开终端
-   open -e ~/.config/antigravity-proxy/config.json   # 把 proxy.port 改成代理软件实际端口
-   ```
-   不想安装也可以：`./build.sh Release` 后改用项目内的 `./scripts/antigravity-proxy.sh`，并编辑 `output-mac/config.json`。
-3. **通过启动器启动（每次都要这样启动）**：
-   ```bash
-   antigravity-proxy app          # Antigravity IDE 客户端
-   antigravity-proxy agy status   # agy 命令行（agy login 同理）
-   ```
+1. **准备代理**：启动 Clash Verge / Surge / V2RayU 等，记下本机 SOCKS5/混合端口（包内默认 `7890`，以软件界面为准）。
+2. 到 [Releases](https://github.com/yuaotian/antigravity-proxy/releases) 下载 **`antigravity-proxy-vX.X-mac-universal2.zip`**，解压后**右键 → 打开** `Antigravity-Proxy.command`，菜单选 **3** 核对/修改代理端口。
+3. 菜单选 **1** 启动（首次会自动完成本地签名补丁并冒烟验证）；选 **2** 使用 agy 命令行。
+
+**macOS 方式 B：源码安装（开发者）：**
+
+```bash
+./scripts/install-mac.sh                                         # 自动编译+安装（需先 xcode-select --install）
+export PATH="$HOME/.local/bin:$PATH"                            # 按提示写入 ~/.zshrc
+open -e ~/.config/antigravity-proxy/config.json                # 改 proxy.port
+antigravity-proxy app                                           # 通过启动器启动
+# 或免安装：./build.sh Release && ./scripts/antigravity-proxy.sh app
+```
 
 > ⚠️ 直接从访达 / 启动台 / 程序坞点开 Antigravity **不会**走代理。
-> 首次运行若提示签名问题，执行 `codesign --force --sign - ~/.local/lib/libantigravity_proxy.dylib` 并在"系统设置 → 隐私与安全性"中允许；日志位于 dylib 同级的 `logs/proxy-*.log`（如 `~/.local/lib/logs/`）。更多细节（含免安装方式、SIP 排坑）见 [README_MAC.md](README_MAC.md)。
+> 🔑 官方程序启用了 Hardened Runtime 且未允许 DYLD 注入，所以**首次必须让启动器执行一次本地签名补丁**（`scripts/mac-patch-app.sh`，仅本机生效、不联网、不改变功能；IDE 升级后需重新补丁；无需关闭 SIP）。补丁提示"正在运行"时请先 ⌘Q 退出 Antigravity。
+> 日志位于 dylib 同级的 `logs/proxy-*.log`（免编译包即解压目录内 `logs/`），成功标志含 `当前宿主进程: Electron` 与 `已绕过 Seatbelt/sandbox-exec`。更多细节（手动补丁、SIP 排坑）见 [README_MAC.md](README_MAC.md)。
 
 ### 配置文件详解 / Configuration Reference
 
