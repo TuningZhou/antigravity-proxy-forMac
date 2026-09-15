@@ -753,20 +753,24 @@ Launch the target application, done! 🎉
 
 > **Same mental model as Windows (prepare proxy → set port → launch Antigravity), but the launch step works differently.**
 > On Windows you drop the DLL next to the exe and **double-click as usual**. macOS has no such auto-loading mechanism: you **must launch Antigravity through the launcher** (it injects `libantigravity_proxy.dylib` via `DYLD_INSERT_LIBRARIES`). Full guide: [README_MAC.md](README_MAC.md).
+>
+> 🛡️ **The stock app is never modified**: on first launch the launcher automatically **duplicates the official app next to the original** (`Antigravity.app` → `Antigravity TUN.app`; `Antigravity IDE.app` → `Antigravity IDE TUN.app`), applies the signing patch **only to the copy**, and launches that copy. The original keeps its pristine Google signature and can be used normally at any time. To remove the proxy setup, just drag the "TUN" copy to the Trash.
+>
+> ✅ **Verified end-to-end on real hardware (2026-09-15, Apple Silicon / macOS 26)**: launched via the launcher, **"Sign in with Google" completed and the IDE entered the main window**. Every OAuth token-exchange / CloudCode endpoint went through the local SOCKS5 tunnel with **zero direct connections bypassing the proxy**. See [README_MAC.md, Appendix A](README_MAC.md) and [CHANGELOG.md](CHANGELOG.md). Before signing in, ⌘Q every Antigravity instance and launch the TUN copy only once via the launcher — otherwise the single-instance lock forwards traffic to an un-injected older instance.
 
 | Item | Windows | macOS |
 |------|---------|-------|
 | Injection | `version.dll` hijack — auto-loaded once placed | `DYLD_INSERT_LIBRARIES` — loaded on the fly by the launcher |
 | Distribution | Build yourself / Release zips | **Recommended: prebuilt `mac-universal2.zip` from Releases** — no compilation needed; source install also available |
-| First-time setup | Copy DLL + config next to the exe | Unzip, right-click-open the launcher; first launch auto-applies a **local signing patch** (ad-hoc re-sign of the stock Hardened Runtime — offline, no SIP disable) |
-| Daily launch | Double-click the Antigravity icon as usual | **Must launch via the launcher**; clicking the icon directly bypasses the proxy |
-| After an IDE update | DLL may need to be copied again | Run the launcher once more — it re-applies the patch automatically |
+| First-time setup | Copy DLL + config next to the exe | Unzip, right-click-open the launcher; first launch **clones a TUN copy next to the stock app** and applies a **local signing patch to the copy only** (ad-hoc re-sign — offline, no SIP disable, original untouched) |
+| Daily launch | Double-click the Antigravity icon as usual | **Must launch via the launcher** (it runs the TUN-suffixed copy); clicking the stock icon directly bypasses the proxy |
+| After an IDE update | DLL may need to be copied again | The launcher detects the version mismatch; press Y to re-clone + re-patch the copy (the original is never touched) |
 
 **Option A — prebuilt package (recommended, no toolchain):**
 
 1. **Prepare a proxy**: start Clash Verge / Surge / V2RayU / sing-box and note your local SOCKS5/mixed port (the package defaults to `7890`; check the app UI).
-2. Download **`antigravity-proxy-vX.X-mac-universal2.zip`** from [Releases](https://github.com/yuaotian/antigravity-proxy/releases), unzip, then **right-click → Open** on `Antigravity-Proxy.command`, choose menu item **3** to verify/change the proxy port.
-3. Choose menu item **1** to launch (the first run applies the local signing patch and runs an injection smoke test); choose **2** for the agy CLI.
+2. Download **`antigravity-proxy-vX.X-mac-universal2.zip`** from [Releases](https://github.com/yuaotian/antigravity-proxy/releases), unzip, then **move the folder to `~/Applications`** (do **not** leave it in Desktop/Documents/Downloads — TCC privacy protection can cause a 126 error during privilege escalation). Then **right-click → Open** on `Antigravity-Proxy.command`, choose menu item **3** to verify/change the proxy port.
+3. Choose menu item **1** to launch (the first run creates the "Antigravity IDE TUN.app" copy, patches the copy only, runs an injection smoke test, then launches it); choose **2** for the agy CLI.
 
 **Option B — install from source (developers):**
 
@@ -774,13 +778,13 @@ Launch the target application, done! 🎉
 ./scripts/install-mac.sh                                         # builds + installs (run xcode-select --install first)
 export PATH="$HOME/.local/bin:$PATH"                            # add it to ~/.zshrc as suggested
 open -e ~/.config/antigravity-proxy/config.json                # set proxy.port
-antigravity-proxy app                                           # launch through the launcher
+antigravity-proxy app                                           # prepares/launches the TUN copy
 # portable alternative: ./build.sh Release && ./scripts/antigravity-proxy.sh app
 ```
 
-> ⚠️ Opening Antigravity from Finder / Launchpad / the Dock does **not** route traffic through the proxy.
-> 🔑 The stock binaries use Hardened Runtime without DYLD-injection entitlements, so the **first launch must apply the local signing patch** (`scripts/mac-patch-app.sh`): local-only, offline, does not change app functionality; it must be re-applied after an IDE update; disabling SIP is **not** required. If the patch says the app is running, quit it with ⌘Q first.
-> Logs are written to `logs/proxy-*.log` next to the dylib (`logs/` inside the unzipped folder for the prebuilt package). Success markers include `当前宿主进程: Electron` and `已绕过 Seatbelt/sandbox-exec` ("Seatbelt/sandbox-exec bypassed"). See [README_MAC.md](README_MAC.md) for manual patching and SIP details.
+> ⚠️ Opening the stock Antigravity icon (no TUN suffix) from Finder / Launchpad / the Dock does **not** route traffic through the proxy — use the **TUN**-suffixed copy for proxied sessions (it shares the login session with the original, but the two cannot run simultaneously).
+> 🔑 The stock binaries use Hardened Runtime without DYLD-injection entitlements, so the **first launch must create the TUN copy and apply the local signing patch to it** (`scripts/mac-patch-app.sh`): local-only, offline, does not change app functionality and never modifies the stock app; after an IDE update simply re-create the copy when prompted; disabling SIP is **not** required. If the patch says the app is running, ⌘Q both the original and the copy first.
+> Logs are written to `logs/proxy-*.log` next to the dylib (`logs/` inside the unzipped folder for the prebuilt package). Success markers include `当前宿主进程: Electron` (host path inside `Antigravity IDE TUN.app`) and `已绕过 Seatbelt/sandbox-exec` ("Seatbelt/sandbox-exec bypassed"). See [README_MAC.md](README_MAC.md) for manual patching and SIP details.
 
 ### Configuration Reference
 

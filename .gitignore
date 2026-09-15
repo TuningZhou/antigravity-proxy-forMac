@@ -62,3 +62,6 @@ build-compatibility-tests*/
 .codex-tools/
 antigravity-oauth-183232-evidence/*
 antigravity-oauth-ab-20260901-191347/
+# macOS 打包产物与本地临时文件
+dist/
+stub.command

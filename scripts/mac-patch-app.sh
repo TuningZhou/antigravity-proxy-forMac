@@ -11,20 +11,29 @@
 #   - App 升级/重装后补丁会被覆盖，重新执行一次即可
 #   - 卸载补丁的方法：重装官方 App
 #
+# TUN 副本机制（默认行为，原件永不修改）：
+#   对官方 Antigravity.app 执行补丁时，会先在同目录复制一份
+#   "<原名> TUN.app"（如 /Applications/Antigravity IDE TUN.app），
+#   克隆副本带修改显示名 + ad-hoc 重签名都只作用于副本；
+#   官方原件保持原始签名，作为“干净入口”保留；不要副本了直接删除即可。
+#
 # 用法（直接执行）：
 #   ./scripts/mac-patch-app.sh "/Applications/Antigravity IDE.app" [dylib路径]
+#   ./scripts/mac-patch-app.sh --recreate "/Applications/Antigravity IDE.app" [dylib路径]
+#   ./scripts/mac-patch-app.sh --status "/Applications/Antigravity IDE.app"
 #   ./scripts/mac-patch-app.sh "$HOME/.antigravity/bin/agy"
 #
-# 也可被其他脚本 source，调用 macpatch_ensure_target 等函数。
+# 也可被其他脚本 source，调用 macpatch_ensure_app_target / macpatch_ensure_target 等函数。
 # ==============================================================================
 
 # 返回码约定：
-#   0 已就绪（原本就不需要补丁，或补丁+冒烟验证成功）
+#   0 已就绪（原本就不需要补丁，或副本创建+补丁+冒烟验证成功）
 #   2 参数不是有效的 app/可执行文件
 #   3 没有写权限（需要 sudo 或更换安装位置）
 #   4 目标正在运行（需要先退出）
-#   5 重签名或注入冒烟验证失败
+#   5 重签名/复制或注入冒烟验证失败
 #   6 系统环境不支持（非 macOS / 缺少 codesign）
+#   7 TUN 副本版本落后于官方原件（需要 --recreate 重建）
 
 __MP_LOG_PREFIX="[patch]"
 __mp_log()  { echo "${__MP_LOG_PREFIX} $*"; }
@@ -195,6 +204,269 @@ macpatch_smoke_test() {
     return 5
 }
 
+# ==============================================================================
+# TUN 副本机制
+# 补丁绝不直接作用于官方原件：首次在原件同目录克隆一份 "<原名> TUN.app"，
+# 重签名只打在副本上，日常启动也启动副本。原件保持 Google 原始签名。
+# ==============================================================================
+
+MACPATCH_TUN_SUFFIX=" TUN"
+
+# 取 .app 的文件名主干（去路径、去 .app）
+macpatch_app_stem() {
+    local base
+    base="$(basename "${1%/}")"
+    echo "${base%.app}"
+}
+
+# 是否为 "... TUN.app" 副本
+macpatch_is_tun_app() {
+    local app="$1"
+    [ -d "${app}" ] || return 1
+    [[ "${app%/}" == *.app ]] || return 1
+    case "$(macpatch_app_stem "${app}")" in
+        *"${MACPATCH_TUN_SUFFIX}") return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+# 识别官方 Antigravity 应用（只对它自动克隆，避免误改其他 App）
+macpatch_is_antigravity_app() {
+    local app="$1" stem bid
+    [ -d "${app}" ] || return 1
+    [[ "${app%/}" == *.app ]] || return 1
+    stem="$(macpatch_app_stem "${app}")"
+    shopt -s nocasematch 2>/dev/null || true
+    if [[ "${stem}" == Antigravity* ]]; then
+        shopt -u nocasematch 2>/dev/null || true
+        return 0
+    fi
+    shopt -u nocasematch 2>/dev/null || true
+    bid="$(/usr/libexec/PlistBuddy -c 'Print:CFBundleIdentifier' \
+        "${app}/Contents/Info.plist" 2>/dev/null || true)"
+    echo "${bid}" | grep -qi 'antigravity'
+}
+
+# 原件 → 同目录 TUN 副本路径；传入副本则原样返回
+macpatch_tun_sibling() {
+    local app dir stem
+    app="${1%/}"
+    dir="$(dirname "${app}")"
+    stem="$(macpatch_app_stem "${app}")"
+    case "${stem}" in
+        *"${MACPATCH_TUN_SUFFIX}") echo "${app}" ;;
+        *) echo "${dir}/${stem}${MACPATCH_TUN_SUFFIX}.app" ;;
+    esac
+}
+
+# 副本 → 推测的官方原件路径（可能不存在）
+macpatch_orig_sibling() {
+    local app dir stem
+    app="${1%/}"
+    dir="$(dirname "${app}")"
+    stem="$(macpatch_app_stem "${app}")"
+    case "${stem}" in
+        *"${MACPATCH_TUN_SUFFIX}")
+            echo "${dir}/${stem%${MACPATCH_TUN_SUFFIX}}.app" ;;
+        *) echo "${app}" ;;
+    esac
+}
+
+# 读取 App 的 CFBundleShortVersionString
+macpatch_app_version() {
+    /usr/libexec/PlistBuddy -c 'Print:CFBundleShortVersionString' \
+        "${1%/}/Contents/Info.plist" 2>/dev/null || true
+}
+
+# 纯路径解析（不拷贝）：副本已存在则返回副本，否则返回原件
+macpatch_effective_app() {
+    local app copy
+    app="${1%/}"
+    if macpatch_is_antigravity_app "${app}" && ! macpatch_is_tun_app "${app}"; then
+        copy="$(macpatch_tun_sibling "${app}")"
+        [ -d "${copy}" ] && { echo "${copy}"; return 0; }
+    fi
+    echo "${app}"
+}
+
+# 原件或副本任一正在运行即返回 0（同 bundle id 具有单实例锁）
+macpatch_is_running_related() {
+    local seed other
+    macpatch_is_running "${seed:=$1}" && return 0
+    if macpatch_is_tun_app "${seed}"; then
+        other="$(macpatch_orig_sibling "${seed}")"
+    else
+        other="$(macpatch_tun_sibling "${seed}")"
+    fi
+    [ -d "${other}" ] && macpatch_is_running "${other}"
+}
+
+# 副本状态词：invalid / not-antigravity / missing / outdated / needs-patch / ready
+macpatch_tun_status_word() {
+    local seed="$1" orig copy ov cv
+    if [ ! -d "${seed}" ] || [[ "${seed%/}" != *.app ]]; then
+        echo invalid; return
+    fi
+    if ! macpatch_is_antigravity_app "${seed}"; then
+        echo not-antigravity; return
+    fi
+    if macpatch_is_tun_app "${seed}"; then
+        copy="${seed%/}"
+        orig="$(macpatch_orig_sibling "${seed}")"
+        [ -d "${orig}" ] || orig=""
+    else
+        orig="${seed%/}"
+        copy="$(macpatch_tun_sibling "${seed}")"
+    fi
+    if [ ! -d "${copy}" ]; then
+        echo missing; return
+    fi
+    if [ -n "${orig}" ] && [ -d "${orig}" ]; then
+        ov="$(macpatch_app_version "${orig}")"
+        cv="$(macpatch_app_version "${copy}")"
+        if [ -n "${ov}" ] && [ -n "${cv}" ] && [ "${ov}" != "${cv}" ]; then
+            echo outdated; return
+        fi
+    fi
+    if macpatch_target_needs_patch "${copy}"; then
+        echo needs-patch
+    else
+        echo ready
+    fi
+}
+
+# 把副本的 Dock/访达显示名改成带 TUN 后缀，避免两个同名图标混淆。
+# 官方包无 InfoPlist.strings 覆盖；若日后出现本地化覆盖也一并改写。
+# 注意：必须在外层重签名之前调用（Info.plist 属于签名内容）。
+macpatch_set_copy_display_name() {
+    local app="$1" name="$2" plist s
+    plist="${app}/Contents/Info.plist"
+    [ -f "${plist}" ] || return 0
+    if /usr/libexec/PlistBuddy -c 'Print:CFBundleDisplayName' "${plist}" >/dev/null 2>&1; then
+        /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName ${name}" "${plist}" >/dev/null 2>&1 || true
+    else
+        /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string ${name}" "${plist}" >/dev/null 2>&1 || true
+    fi
+    for s in "${app}/Contents/Resources/"*.lproj/InfoPlist.strings; do
+        [ -f "${s}" ] || continue
+        if /usr/libexec/PlistBuddy -c 'Print:CFBundleDisplayName' "${s}" >/dev/null 2>&1; then
+            /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName ${name}" "${s}" >/dev/null 2>&1 || true
+        fi
+    done
+}
+
+# 克隆官方原件 → TUN 副本。调用前需确认副本不存在、父目录可写。
+# 返回 0 成功；3 父目录不可写；5 复制失败
+macpatch_clone_app() {
+    local orig="$1" copy="$2"
+    [ -d "${orig}" ] || { __mp_err "官方原件不存在: ${orig}"; return 2; }
+    [ -e "${copy}" ] && { __mp_err "副本已存在: ${copy}"; return 5; }
+    if [ ! -w "$(dirname "${copy}")" ]; then
+        return 3
+    fi
+    __mp_log "首次使用：正在复制一份官方程序（官方原件不会被修改）..."
+    __mp_log "  原件（保持原样）: ${orig}"
+    __mp_log "  副本（打补丁）:   ${copy}"
+    __mp_log "副本体积约 1GB，复制需要数十秒，请耐心等待..."
+    if ! ditto "${orig}" "${copy}"; then
+        __mp_err "复制失败，请检查磁盘空间后重试。"
+        rm -rf "${copy}" 2>/dev/null || true
+        return 5
+    fi
+    # 副本不带下载隔离标记，避免 Gatekeeper 弹“已损坏，打不开”
+    xattr -dr com.apple.quarantine "${copy}" 2>/dev/null || true
+    macpatch_set_copy_display_name "${copy}" "$(macpatch_app_stem "${copy}")"
+    __mp_log "副本创建完成（登录状态与设置和原件共用，无需重新登录）。"
+    return 0
+}
+
+# 删除旧副本并按当前原件重新克隆。
+# 返回 4 副本正在运行；3 不可写；5 删除/复制失败
+macpatch_reclone_app() {
+    local orig="$1" copy="$2"
+    [ -d "${orig}" ] || { __mp_err "官方原件不存在: ${orig}"; return 2; }
+    if [ -d "${copy}" ] && macpatch_is_running "${copy}"; then
+        __mp_err "TUN 副本正在运行，请先 ⌘Q 完全退出后再重建。"
+        return 4
+    fi
+    if [ -d "${copy}" ]; then
+        if [ ! -w "$(dirname "${copy}")" ] || [ ! -w "${copy}" ]; then
+            return 3
+        fi
+        __mp_log "正在删除旧版本副本..."
+        if ! rm -rf "${copy}"; then
+            __mp_err "旧副本删除失败。"
+            return 5
+        fi
+    fi
+    macpatch_clone_app "${orig}" "${copy}"
+}
+
+# 一体化入口（App 走 TUN 副本机制；裸可执行文件保持就地补丁）
+# 用法：macpatch_ensure_app_target <目标> [dylib路径] [recreate]
+# 成功后全局变量 MACPATCH_EFFECTIVE_TARGET 为实际应启动的目标路径
+# 返回码同 macpatch_ensure_target，另：7=副本版本落后，需 recreate 重建
+macpatch_ensure_app_target() {
+    local target="$1" dylib="${2:-}" recreate="${3:-}"
+    local app_dir copy orig ov cv
+    MACPATCH_EFFECTIVE_TARGET=""
+
+    if [ "$(uname -s)" != "Darwin" ] || ! command -v codesign >/dev/null 2>&1; then
+        __mp_err "需要在安装了 Xcode 命令行工具的 macOS 上运行。"
+        return 6
+    fi
+    if [ ! -e "${target}" ]; then
+        __mp_err "目标不存在: ${target}"
+        return 2
+    fi
+
+    if [ ! -d "${target}" ] || [[ "${target%/}" != *.app ]]; then
+        # 裸可执行文件（agy / language_server 等）：保持就地补丁
+        MACPATCH_EFFECTIVE_TARGET="${target}"
+        macpatch_ensure_target "${target}" "${dylib}"
+        return $?
+    fi
+    app_dir="${target%/}"
+
+    if ! macpatch_is_antigravity_app "${app_dir}"; then
+        # 非 Antigravity 的其他 App：保持原有就地补丁行为
+        MACPATCH_EFFECTIVE_TARGET="${app_dir}"
+        macpatch_ensure_target "${app_dir}" "${dylib}"
+        return $?
+    fi
+
+    if macpatch_is_tun_app "${app_dir}"; then
+        copy="${app_dir}"
+        orig="$(macpatch_orig_sibling "${app_dir}")"
+        [ -d "${orig}" ] || orig=""
+    else
+        orig="${app_dir}"
+        copy="$(macpatch_tun_sibling "${app_dir}")"
+    fi
+
+    if [ ! -d "${copy}" ]; then
+        [ -n "${orig}" ] && [ -d "${orig}" ] || { __mp_err "找不到可复制的官方原件。"; return 2; }
+        macpatch_clone_app "${orig}" "${copy}" || return $?
+    elif [ "${recreate}" = "recreate" ]; then
+        [ -n "${orig}" ] && [ -d "${orig}" ] || { __mp_err "找不到官方原件，无法重建副本。"; return 2; }
+        macpatch_reclone_app "${orig}" "${copy}" || return $?
+    else
+        if [ -n "${orig}" ] && [ -d "${orig}" ]; then
+            ov="$(macpatch_app_version "${orig}")"
+            cv="$(macpatch_app_version "${copy}")"
+            if [ -n "${ov}" ] && [ -n "${cv}" ] && [ "${ov}" != "${cv}" ]; then
+                __mp_warn "TUN 副本版本(${cv})与官方原件(${ov})不一致。"
+                __mp_warn "建议重建副本（加 --recreate 重新复制；官方原件不会被改动）。"
+                MACPATCH_EFFECTIVE_TARGET="${copy}"
+                return 7
+            fi
+        fi
+    fi
+
+    MACPATCH_EFFECTIVE_TARGET="${copy}"
+    macpatch_ensure_target "${copy}" "${dylib}"
+}
+
 # 一体化入口：确保目标可被注入
 # 用法：macpatch_ensure_target <目标> [dylib路径]
 macpatch_ensure_target() {
@@ -272,9 +544,30 @@ macpatch_ensure_target() {
 # 直接执行模式
 if [ "${BASH_SOURCE[0]:-$0}" = "${0}" ]; then
     set -euo pipefail
+    mode="ensure"
+    case "${1:-}" in
+        --status)   mode="status"; shift ;;
+        --recreate) mode="recreate"; shift ;;
+        -h|--help)
+            echo "用法: $0 [--status|--recreate] <Antigravity.app 或可执行文件路径> [dylib路径]"
+            echo "  默认        首次自动在同目录创建“<原名> TUN.app”副本并只对副本打补丁"
+            echo "  --status    输出副本状态: missing / outdated / needs-patch / ready 等"
+            echo "  --recreate  官方升级后，删除旧副本并按当前原件重新复制+补丁"
+            exit 0 ;;
+    esac
     if [ $# -lt 1 ]; then
-        echo "用法: $0 <Antigravity.app 或可执行文件路径> [dylib路径]"
+        echo "用法: $0 [--status|--recreate] <Antigravity.app 或可执行文件路径> [dylib路径]"
         exit 2
     fi
-    macpatch_ensure_target "$1" "${2:-}"
+    case "${mode}" in
+        status)
+            macpatch_tun_status_word "$1"
+            ;;
+        recreate)
+            macpatch_ensure_app_target "$1" "${2:-}" recreate
+            ;;
+        ensure)
+            macpatch_ensure_app_target "$1" "${2:-}"
+            ;;
+    esac
 fi

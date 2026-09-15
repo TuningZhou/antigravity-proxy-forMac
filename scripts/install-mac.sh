@@ -59,6 +59,8 @@ cat << 'EOF' > "${BIN_DIR}/antigravity-proxy"
 set -e
 
 # Antigravity-Proxy macOS Launcher（由 install-mac.sh 生成）
+# 对官方 Antigravity：自动在同目录准备“<原名> TUN.app”副本，补丁只打副本，
+# 原件保持官方签名。
 DYLIB_PATH="PLACEHOLDER_LIB_DIR/libantigravity_proxy.dylib"
 PATCH_SCRIPT="PLACEHOLDER_LIB_DIR/mac-patch-app.sh"
 
@@ -77,8 +79,15 @@ derive_app_dir() {
     return 1
 }
 
+shquote() {
+    local s="$1"
+    echo "'${s//\'/\'\\\'\'}'"
+}
+
 find_antigravity_app() {
     local cand d
+    _tun_is_original_path() { case "$(macpatch_app_stem "$1" 2>/dev/null)" in
+        *" TUN") return 1 ;; *) return 0 ;; esac; }
     for cand in \
         "/Applications/Antigravity IDE.app" \
         "/Applications/Antigravity.app" \
@@ -87,10 +96,42 @@ find_antigravity_app() {
         [ -d "${cand}" ] && { echo "${cand}"; return 0; }
     done
     if command -v mdfind >/dev/null 2>&1; then
-        d="$(mdfind "kMDItemCFBundleIdentifier == 'com.antigravity.desktop'" 2>/dev/null | head -n 1)"
-        [ -n "${d}" ] && [ -d "${d}" ] && { echo "${d}"; return 0; }
+        d="$(mdfind "(kMDItemCFBundleIdentifier == 'com.google.antigravity-ide') || (kMDItemCFBundleIdentifier == 'com.antigravity.desktop')" 2>/dev/null || true)"
+        while IFS= read -r line; do
+            [ -n "${line}" ] && [ -d "${line}" ] && _tun_is_original_path "${line}" && { echo "${line%/}"; return 0; }
+        done <<< "${d}"
     fi
     return 1
+}
+
+# /Applications 等不可写目录：弹窗提权完成“复制副本+补丁”，并 chown 回当前用户。
+# macOS 的“文稿/桌面/下载”受 TCC 保护，root 提权进程无权读取其中的脚本
+# （报 Operation not permitted 126），先把补丁脚本与 dylib 暂存到 /private/tmp。
+run_app_prepare_as_admin() {
+    local seed="$1" recreate="$2" copy uid gid inner esc rc=0 stage patch_tmp dylib_tmp
+    copy="$(macpatch_tun_sibling "${seed}" 2>/dev/null || true)"
+    macpatch_is_tun_app "${seed}" 2>/dev/null && copy="${seed%/}"
+    uid="$(id -u)"; gid="$(id -g)"
+    stage="$(mktemp -d /private/tmp/agy-proxy-admin.XXXXXX 2>/dev/null || mktemp -d -t agyproxy)" || return 1
+    chmod 755 "${stage}" 2>/dev/null
+    patch_tmp="${stage}/mac-patch-app.sh"
+    dylib_tmp="${stage}/libantigravity_proxy.dylib"
+    if ! /bin/cp "${PATCH_SCRIPT}" "${patch_tmp}" || ! /bin/cp "${DYLIB_PATH}" "${dylib_tmp}"; then
+        rm -rf "${stage}" 2>/dev/null
+        echo "[错误] 无法准备提权临时文件: ${stage}" >&2
+        return 1
+    fi
+    chmod 755 "${patch_tmp}" "${dylib_tmp}" 2>/dev/null
+    if [ "${recreate}" = "recreate" ]; then
+        inner="/bin/bash $(shquote "${patch_tmp}") --recreate $(shquote "${seed}") $(shquote "${dylib_tmp}"); rc=\$?"
+    else
+        inner="/bin/bash $(shquote "${patch_tmp}") $(shquote "${seed}") $(shquote "${dylib_tmp}"); rc=\$?"
+    fi
+    inner="${inner}; /usr/sbin/chown -R ${uid}:${gid} $(shquote "${copy}") 2>/dev/null; exit \$rc"
+    esc="${inner//\\/\\\\}"; esc="${esc//\"/\\\"}"
+    /usr/bin/osascript -e "do shell script \"${esc}\" with administrator privileges" || rc=$?
+    rm -rf "${stage}" 2>/dev/null
+    return ${rc}
 }
 
 ensure_patch() {
@@ -118,12 +159,76 @@ ensure_patch() {
     return 0
 }
 
+# 官方 App：准备 TUN 副本（复制/重建/补丁），结果写入 EFFECTIVE_APP
+ensure_app_ready() {
+    local seed="$1" state ans rc do_recreate="" parent ov cv
+    if ! command -v macpatch_tun_status_word >/dev/null 2>&1; then
+        echo "[警告] 缺少补丁脚本，无法准备代理副本，将直接启动目标（注入可能失效）。"
+        EFFECTIVE_APP="${seed%/}"; return 0
+    fi
+    state="$(macpatch_tun_status_word "${seed}")"
+    case "${state}" in
+        ready)
+            EFFECTIVE_APP="$(macpatch_effective_app "${seed}")"; return 0 ;;
+        invalid|not-antigravity)
+            ensure_patch "${seed}" || return 1
+            EFFECTIVE_APP="${seed%/}"; return 0 ;;
+    esac
+
+    echo "[提示] 代理不会修改官方原件，将在同目录准备副本："
+    echo "         $(macpatch_tun_sibling "${seed}")"
+    if [ "${state}" = "outdated" ]; then
+        ov="$(macpatch_app_version "${seed}")"
+        cv="$(macpatch_app_version "$(macpatch_tun_sibling "${seed}")")"
+        echo "       副本版本(${cv})落后于原件(${ov})，建议重建。"
+        if [ -t 0 ]; then
+            read -r -p "       现在重建副本（重新复制+补丁）吗？[Y/n] " ans
+            case "${ans}" in n|N|no|NO) ;; *) do_recreate="recreate" ;; esac
+        fi
+    fi
+    if [ -t 0 ]; then
+        read -r -p "       现在准备代理副本吗？[Y/n] " ans
+        case "${ans}" in
+            n|N|no|NO) echo "[中止] 用户取消。"; return 1 ;;
+        esac
+    fi
+    if macpatch_is_running_related "${seed}"; then
+        echo "[中止] 请先完全退出 Antigravity（原件或副本，⌘Q）。"
+        return 1
+    fi
+
+    parent="$(dirname "$(macpatch_tun_sibling "${seed}")")"
+    set +e
+    if [ -w "${parent}" ]; then
+        if [ "${do_recreate}" = "recreate" ]; then
+            macpatch_ensure_app_target "${seed}" "${DYLIB_PATH}" recreate
+        else
+            macpatch_ensure_app_target "${seed}" "${DYLIB_PATH}"
+        fi
+        rc=$?
+    else
+        echo "       在“${parent}”创建副本需要管理员权限，将弹出系统授权框..."
+        run_app_prepare_as_admin "${seed}" "${do_recreate}"
+        rc=$?
+    fi
+    set -e
+    if [ "${rc}" -ne 0 ]; then
+        echo "[中止] 代理副本准备未成功（返回码 ${rc}）。"
+        if [ "${rc}" = "126" ]; then
+            echo "       返回码 126 (Operation not permitted) 多为 macOS 隐私保护拦截："
+            echo "       请在“系统设置 → 隐私与安全性 → 完全磁盘访问权限”中允许“终端”后重试。"
+        fi
+        return 1
+    fi
+    EFFECTIVE_APP="${MACPATCH_EFFECTIVE_TARGET:-$(macpatch_tun_sibling "${seed}")}"
+}
+
 launch_app() {
     open -n \
         --env DYLD_INSERT_LIBRARIES="${DYLIB_PATH}" \
         --env DYLD_FORCE_FLAT_NAMESPACE=1 \
         "$1"
-    echo "[完成] Antigravity 已启动。日志: PLACEHOLDER_LIB_DIR/logs/"
+    echo "[完成] Antigravity 代理副本已启动。日志: PLACEHOLDER_LIB_DIR/logs/"
 }
 
 TARGET="${1:-app}"
@@ -131,9 +236,9 @@ TARGET="${1:-app}"
 if [ "${TARGET}" = "app" ]; then
     APP_DIR="$(find_antigravity_app || true)"
     [ -z "${APP_DIR}" ] && { echo "[错误] 未找到 Antigravity.app，可直接传入路径: $0 /path/to/Antigravity.app"; exit 1; }
-    ensure_patch "${APP_DIR}" || exit 1
-    echo "[启动] ${APP_DIR}"
-    launch_app "${APP_DIR}"
+    ensure_app_ready "${APP_DIR}" || exit 1
+    echo "[启动] ${EFFECTIVE_APP}"
+    launch_app "${EFFECTIVE_APP}"
 elif [ "${TARGET}" = "agy" ]; then
     AGY_PATH="$(command -v agy 2>/dev/null || true)"
     [ -z "${AGY_PATH}" ] && [ -f "$HOME/.antigravity/bin/agy" ] && AGY_PATH="$HOME/.antigravity/bin/agy"
@@ -149,9 +254,14 @@ else
     fi
     APP_OF_CUSTOM="$(derive_app_dir "${TARGET}" || true)"
     if [ -n "${APP_OF_CUSTOM}" ]; then
-        ensure_patch "${APP_OF_CUSTOM}" || exit 1
-        echo "[启动] ${APP_OF_CUSTOM}"
-        launch_app "${APP_OF_CUSTOM}"
+        if command -v macpatch_is_antigravity_app >/dev/null 2>&1 && macpatch_is_antigravity_app "${APP_OF_CUSTOM}"; then
+            ensure_app_ready "${APP_OF_CUSTOM}" || exit 1
+        else
+            ensure_patch "${APP_OF_CUSTOM}" || exit 1
+            EFFECTIVE_APP="${APP_OF_CUSTOM}"
+        fi
+        echo "[启动] ${EFFECTIVE_APP}"
+        launch_app "${EFFECTIVE_APP}"
     else
         echo "[启动] ${TARGET}"
         DYLD_INSERT_LIBRARIES="${DYLIB_PATH}" DYLD_FORCE_FLAT_NAMESPACE=1 exec "${TARGET}" "${@:2}"
@@ -171,7 +281,7 @@ echo " 请确保 ${BIN_DIR} 已加入您的 PATH 环境变量 (例如在 ~/.zshr
 echo "   export PATH=\"${BIN_DIR}:\$PATH\""
 echo ""
 echo " 使用方法:"
-echo "   antigravity-proxy app      # 启动 Antigravity IDE（首次会引导签名补丁）"
+echo "   antigravity-proxy app      # 启动 Antigravity IDE（首次自动创建 TUN 副本并打补丁）"
 echo "   antigravity-proxy agy      # 启动 agy 命令行工具"
 echo "   antigravity-proxy <path>   # 代理指定的 .app 或可执行程序"
 echo "=================================================="

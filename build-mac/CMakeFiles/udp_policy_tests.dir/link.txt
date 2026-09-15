@@ -1,1 +1,1 @@
-/usr/bin/c++ -O3 -DNDEBUG -arch arm64 -arch x86_64 -Wl,-search_paths_first -Wl,-headerpad_max_install_names CMakeFiles/udp_policy_tests.dir/tests/test_udp_policy.cpp.o -o udp_policy_tests
+/usr/bin/c++ -O3 -DNDEBUG -arch arm64 -Wl,-search_paths_first -Wl,-headerpad_max_install_names CMakeFiles/udp_policy_tests.dir/tests/test_udp_policy.cpp.o -o udp_policy_tests

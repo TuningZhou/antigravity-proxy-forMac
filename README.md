@@ -789,20 +789,24 @@ target_link_libraries(version PRIVATE ws2_32)
 
 > **使用思路和 Windows 一样（准备代理 → 配置端口 → 启动 Antigravity），但"启动方式"不同。**
 > Windows 把 DLL 放到 exe 旁边后即可**照常双击启动**；macOS 没有这种自动加载机制，**必须通过启动器打开 Antigravity**（由启动器注入 `libantigravity_proxy.dylib`）。完整图文指南见 [README_MAC.md](README_MAC.md)。
+>
+> 🛡️ **补丁不碰官方原件**：首次启动时启动器会自动在官方 App **同目录复制一份副本**（`Antigravity.app`→`Antigravity TUN.app`，`Antigravity IDE.app`→`Antigravity IDE TUN.app`），签名补丁只打在副本上，启动的也是副本；官方原件保持干净的官方签名，随时可照常使用。不想要代理时把"TUN"副本拖进废纸篓即可。
+>
+> ✅ **已真机端到端验证（2026-09-15，Apple Silicon / macOS 26）**：经启动器启动 TUN 副本后，IDE 内 **"Sign in with Google" 授权成功并进入主界面**；OAuth token 交换、CloudCode 后端等全部域名经 SOCKS5 代理隧道，0 条绕过直连。详见 [README_MAC.md 附录 A](README_MAC.md#附录-a端到端验证记录2026-09-15) 与 [CHANGELOG.md](CHANGELOG.md)。登录前请先 ⌘Q 退出所有 Antigravity，只用启动器开一次 TUN 副本，避免单实例锁把请求转给未注入的旧实例。
 
 | 对比项 | Windows | macOS |
 |--------|---------|-------|
 | 注入方式 | `version.dll` 劫持，放文件即自动加载 | `DYLD_INSERT_LIBRARIES` 注入，启动器临时加载 |
 | 获取方式 | 自行编译或 Release 产物 | **推荐直接下载 Release 的 `mac-universal2.zip` 免编译包**；也可源码安装 |
-| 首次准备 | 复制 DLL + config 到 exe 同级 | 解压后右键打开启动器；首次启动自动执行一次"本地签名补丁"（ad-hoc 重签官方 Hardened Runtime，不联网、不需关 SIP） |
-| 日常启动 | 照常双击 Antigravity 图标 | **必须用启动器启动**，直接点图标不走代理 |
-| IDE 升级后 | 可能需重新复制 DLL | 重新双击启动器一次，自动重新应用补丁 |
+| 首次准备 | 复制 DLL + config 到 exe 同级 | 解压后右键打开启动器；首次启动自动**同目录复制 TUN 副本**，并仅对副本执行一次"本地签名补丁"（ad-hoc 重签，不联网、不需关 SIP） |
+| 日常启动 | 照常双击 Antigravity 图标 | **必须用启动器启动**（运行的是带 TUN 后缀的副本），直接点官方图标不走代理 |
+| IDE 升级后 | 可能需重新复制 DLL | 首次启动会提示版本不一致，按 Y 自动重新复制+补丁副本（原件始终不动） |
 
 **macOS 方式 A：预编译包（推荐，免编译）3 步上手：**
 
 1. **准备代理**：启动 Clash Verge / Surge / V2RayU 等，记下本机 SOCKS5/混合端口（包内默认 `7890`，以软件界面为准）。
-2. 到 [Releases](https://github.com/yuaotian/antigravity-proxy/releases) 下载 **`antigravity-proxy-vX.X-mac-universal2.zip`**，解压后**右键 → 打开** `Antigravity-Proxy.command`，菜单选 **3** 核对/修改代理端口。
-3. 菜单选 **1** 启动（首次会自动完成本地签名补丁并冒烟验证）；选 **2** 使用 agy 命令行。
+2. 到 [Releases](https://github.com/yuaotian/antigravity-proxy/releases) 下载 **`antigravity-proxy-vX.X-mac-universal2.zip`**，解压后建议把文件夹移到 `~/Applications`（**不要留在桌面/文稿/下载**，否则提权可能报 126），再**右键 → 打开** `Antigravity-Proxy.command`，菜单选 **3** 核对/修改代理端口。
+3. 菜单选 **1** 启动（首次自动复制"Antigravity IDE TUN.app"副本、只对副本打补丁并冒烟验证，随后启动副本）；选 **2** 使用 agy 命令行。
 
 **macOS 方式 B：源码安装（开发者）：**
 
@@ -810,13 +814,13 @@ target_link_libraries(version PRIVATE ws2_32)
 ./scripts/install-mac.sh                                         # 自动编译+安装（需先 xcode-select --install）
 export PATH="$HOME/.local/bin:$PATH"                            # 按提示写入 ~/.zshrc
 open -e ~/.config/antigravity-proxy/config.json                # 改 proxy.port
-antigravity-proxy app                                           # 通过启动器启动
+antigravity-proxy app                                           # 自动准备/启动 TUN 副本
 # 或免安装：./build.sh Release && ./scripts/antigravity-proxy.sh app
 ```
 
-> ⚠️ 直接从访达 / 启动台 / 程序坞点开 Antigravity **不会**走代理。
-> 🔑 官方程序启用了 Hardened Runtime 且未允许 DYLD 注入，所以**首次必须让启动器执行一次本地签名补丁**（`scripts/mac-patch-app.sh`，仅本机生效、不联网、不改变功能；IDE 升级后需重新补丁；无需关闭 SIP）。补丁提示"正在运行"时请先 ⌘Q 退出 Antigravity。
-> 日志位于 dylib 同级的 `logs/proxy-*.log`（免编译包即解压目录内 `logs/`），成功标志含 `当前宿主进程: Electron` 与 `已绕过 Seatbelt/sandbox-exec`。更多细节（手动补丁、SIP 排坑）见 [README_MAC.md](README_MAC.md)。
+> ⚠️ 直接从访达 / 启动台 / 程序坞点开不带 TUN 的官方 Antigravity 图标**不会**走代理；代理请认准显示名带 **TUN** 的副本（与原件共用登录态，但两者不能同时运行）。
+> 🔑 官方程序启用了 Hardened Runtime 且未允许 DYLD 注入，所以**首次必须让启动器准备 TUN 副本并执行一次本地签名补丁**（`scripts/mac-patch-app.sh`，仅本机生效、不联网、不改变功能、不修改官方原件；IDE 升级后按提示重建副本即可；无需关闭 SIP）。补丁提示"正在运行"时请先 ⌘Q 退出原件和副本。
+> 日志位于 dylib 同级的 `logs/proxy-*.log`（免编译包即解压目录内 `logs/`），成功标志含 `当前宿主进程: Electron`（路径在 `Antigravity IDE TUN.app` 内）与 `已绕过 Seatbelt/sandbox-exec`。更多细节（手动补丁、SIP 排坑）见 [README_MAC.md](README_MAC.md)。
 
 ### 配置文件详解 / Configuration Reference
 

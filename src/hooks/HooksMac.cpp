@@ -67,15 +67,39 @@ using posix_spawnp_fn = int (*)(pid_t*, const char*, const posix_spawn_file_acti
 using execve_fn = int (*)(const char*, char* const[], char* const[]);
 
 // 在系统镜像中按带下划线的符号名（如 "_connect"）定位真实实现地址。
-static void* ResolveSystemSymbol(const char* symbolName) {
+// preferredImageBasename 非空时，仅在该镜像（按文件名精确匹配）内取定义。
+// 这一点至关重要：同一符号名可能在多个 /usr/lib/system 镜像中都有 N_SECT 定义，
+// 例如 libsystem_c.dylib 内存在 posix_spawn 的包装实现（内部回调 posix_spawnp，
+// 而 posix_spawnp 又调用 posix_spawn）。若误取该包装，拦截后会形成
+// my_posix_spawn -> libc包装 -> posix_spawnp -> posix_spawn(被interpose) ->
+// my_posix_spawn 的无限递归（Electron 启动即 spawn 时必现栈溢出）。
+// 因此必须按权威归属取符号：
+//   connect/close/execve/posix_spawn -> libsystem_kernel.dylib
+//   posix_spawnp                     -> libsystem_c.dylib
+//   getaddrinfo/freeaddrinfo/gethostbyname -> libsystem_info.dylib
+static void* ResolveSystemSymbol(const char* symbolName,
+                                 const char* preferredImageBasename = nullptr) {
     const uint32_t imageCount = _dyld_image_count();
-    for (uint32_t i = 0; i < imageCount; ++i) {
+    // 第一轮：在指定归属镜像中精确查找
+    // 第二轮（未指定归属或首轮未命中时）：在全部系统镜像中按定义查找
+    for (int pass = 0; pass < 2; ++pass) {
+      for (uint32_t i = 0; i < imageCount; ++i) {
         const char* imageName = _dyld_get_image_name(i);
         if (imageName == nullptr) continue;
         // 仅在系统库目录中查找：connect/close/execve/posix_spawn 位于
         // libsystem_kernel，posix_spawnp 位于 libsystem_c，
         // getaddrinfo 系列位于 libsystem_info。
         if (strstr(imageName, "/usr/lib/system/") == nullptr) continue;
+
+        const char* imageBase = strrchr(imageName, '/');
+        imageBase = imageBase ? imageBase + 1 : imageName;
+        if (preferredImageBasename != nullptr) {
+            const bool exact = (pass == 0) && (strcmp(imageBase, preferredImageBasename) == 0);
+            const bool fallback = (pass == 1);
+            if (!exact && !fallback) continue;
+        } else if (pass == 1) {
+            continue; // 未指定归属镜像时无需第二轮
+        }
 
         const auto* header = reinterpret_cast<const mach_header_64*>(_dyld_get_image_header(i));
         if (header == nullptr || header->magic != MH_MAGIC_64) continue;
@@ -114,33 +138,68 @@ static void* ResolveSystemSymbol(const char* symbolName) {
                     static_cast<uintptr_t>(slide) + entry.n_value);
             }
         }
+      }
     }
     return nullptr;
 }
 
-// 按函数指针类型解析真实系统函数（惰性、只解析一次）；符号表解析失败时
-// 最后才回退到 dlsym（正常环境下不应走到）。
+// 按符号名+归属镜像解析一次真实系统函数；失败回退 dlsym（正常不应走到）。
+// 注意：绝不能用 "以函数指针类型为键的模板 static 缓存"——posix_spawn 与
+// posix_spawnp 的签名完全相同，会实例化同一个模板特化、共享同一个 static
+// 指针，先调用者缓存的地址会被另一个钩子误用（Electron 先调 posix_spawnp
+// 时，my_posix_spawn 会把 libsystem_c 的 posix_spawnp 当作内核 posix_spawn
+// 调用，而真实 posix_spawnp 内部又回调被 interpose 的 posix_spawn，形成
+// my_posix_spawn -> posix_spawnp -> my_posix_spawn 无限递归直至栈溢出）。
+// 因此每个 Real* 函数各自持有独立的函数级 static 指针。
 template <typename FnT>
-static FnT RealSystemFunction(const char* mangledName) {
-    static FnT fn = nullptr;
-    if (fn == nullptr) {
-        void* p = ResolveSystemSymbol(mangledName);
-        if (p == nullptr) {
-            p = dlsym(RTLD_NEXT, mangledName + 1); // 去掉前导下划线
-        }
-        fn = reinterpret_cast<FnT>(p);
+static FnT ResolveSystemFn(const char* mangledName, const char* preferredImageBasename) {
+    void* p = ResolveSystemSymbol(mangledName, preferredImageBasename);
+    if (p == nullptr) {
+        p = dlsym(RTLD_NEXT, mangledName + 1); // 去掉前导下划线
     }
-    return fn;
+    return reinterpret_cast<FnT>(p);
 }
 
-inline connect_fn RealConnect() { return RealSystemFunction<connect_fn>("_connect"); }
-inline getaddrinfo_fn RealGetaddrinfo() { return RealSystemFunction<getaddrinfo_fn>("_getaddrinfo"); }
-inline freeaddrinfo_fn RealFreeaddrinfo() { return RealSystemFunction<freeaddrinfo_fn>("_freeaddrinfo"); }
-inline gethostbyname_fn RealGethostbyname() { return RealSystemFunction<gethostbyname_fn>("_gethostbyname"); }
-inline close_fn RealClose() { return RealSystemFunction<close_fn>("_close"); }
-inline posix_spawn_fn RealPosixSpawn() { return RealSystemFunction<posix_spawn_fn>("_posix_spawn"); }
-inline posix_spawnp_fn RealPosixSpawnp() { return RealSystemFunction<posix_spawnp_fn>("_posix_spawnp"); }
-inline execve_fn RealExecve() { return RealSystemFunction<execve_fn>("_execve"); }
+inline connect_fn RealConnect() {
+    static const connect_fn fn =
+        ResolveSystemFn<connect_fn>("_connect", "libsystem_kernel.dylib");
+    return fn;
+}
+inline getaddrinfo_fn RealGetaddrinfo() {
+    static const getaddrinfo_fn fn =
+        ResolveSystemFn<getaddrinfo_fn>("_getaddrinfo", "libsystem_info.dylib");
+    return fn;
+}
+inline freeaddrinfo_fn RealFreeaddrinfo() {
+    static const freeaddrinfo_fn fn =
+        ResolveSystemFn<freeaddrinfo_fn>("_freeaddrinfo", "libsystem_info.dylib");
+    return fn;
+}
+inline gethostbyname_fn RealGethostbyname() {
+    static const gethostbyname_fn fn =
+        ResolveSystemFn<gethostbyname_fn>("_gethostbyname", "libsystem_info.dylib");
+    return fn;
+}
+inline close_fn RealClose() {
+    static const close_fn fn =
+        ResolveSystemFn<close_fn>("_close", "libsystem_kernel.dylib");
+    return fn;
+}
+inline posix_spawn_fn RealPosixSpawn() {
+    static const posix_spawn_fn fn =
+        ResolveSystemFn<posix_spawn_fn>("_posix_spawn", "libsystem_kernel.dylib");
+    return fn;
+}
+inline posix_spawnp_fn RealPosixSpawnp() {
+    static const posix_spawnp_fn fn =
+        ResolveSystemFn<posix_spawnp_fn>("_posix_spawnp", "libsystem_c.dylib");
+    return fn;
+}
+inline execve_fn RealExecve() {
+    static const execve_fn fn =
+        ResolveSystemFn<execve_fn>("_execve", "libsystem_kernel.dylib");
+    return fn;
+}
 
 // 获取当前 dylib 的绝对路径
 static std::string GetCurrentDylibPath() {
