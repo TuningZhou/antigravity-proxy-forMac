@@ -84,23 +84,99 @@ shquote() {
     echo "'${s//\'/\'\\\'\'}'"
 }
 
-find_antigravity_app() {
-    local cand d
-    _tun_is_original_path() { case "$(macpatch_app_stem "$1" 2>/dev/null)" in
-        *" TUN") return 1 ;; *) return 0 ;; esac; }
+app_bundle_id() {
+    /usr/libexec/PlistBuddy -c 'Print:CFBundleIdentifier' \
+        "${1%/}/Contents/Info.plist" 2>/dev/null || true
+}
+
+# 枚举本机全部官方 Antigravity 原件（排除 TUN 副本），每行一个，IDE 优先
+list_antigravity_apps() {
+    local cand d acc=""
+    __lapp_add() {
+        local p="${1%/}" stem
+        [ -d "${p}" ] || return 0
+        stem="$(macpatch_app_stem "${p}" 2>/dev/null || basename "${p}" .app)"
+        case "${stem}" in *" TUN") return 0 ;; esac
+        case "|${acc}|" in *"|${p}|"*) ;; *) acc="${acc}|${p}" ;; esac
+    }
     for cand in \
         "/Applications/Antigravity IDE.app" \
         "/Applications/Antigravity.app" \
         "$HOME/Applications/Antigravity IDE.app" \
         "$HOME/Applications/Antigravity.app"; do
-        [ -d "${cand}" ] && { echo "${cand}"; return 0; }
+        __lapp_add "${cand}"
     done
     if command -v mdfind >/dev/null 2>&1; then
-        d="$(mdfind "(kMDItemCFBundleIdentifier == 'com.google.antigravity-ide') || (kMDItemCFBundleIdentifier == 'com.antigravity.desktop')" 2>/dev/null || true)"
-        while IFS= read -r line; do
-            [ -n "${line}" ] && [ -d "${line}" ] && _tun_is_original_path "${line}" && { echo "${line%/}"; return 0; }
-        done <<< "${d}"
+        d="$(mdfind "(kMDItemCFBundleIdentifier == 'com.google.antigravity-ide') || (kMDItemCFBundleIdentifier == 'com.google.antigravity') || (kMDItemCFBundleIdentifier == 'com.antigravity.desktop')" 2>/dev/null || true)"
+        while IFS= read -r cand; do __lapp_add "${cand}"; done <<< "${d}"
+        d="$(mdfind "kMDItemContentType == 'com.apple.application-bundle' && (kMDItemFSName == 'Antigravity.app' || kMDItemFSName == 'Antigravity IDE.app')" 2>/dev/null || true)"
+        while IFS= read -r cand; do __lapp_add "${cand}"; done <<< "${d}"
     fi
+    [ -z "${acc}" ] || printf '%s\n' "${acc:1}" | tr '|' '\n'
+}
+
+find_antigravity_app() {
+    list_antigravity_apps | head -n 1
+}
+
+# 选择器：ide / classic|antigravity / 序号 / .app 路径 / 空（唯一直选，多个需 TTY）
+pick_antigravity_app() {
+    local sel="${1:-}" apps=() i p stem bid sel_lower n
+    while IFS= read -r line; do [ -n "${line}" ] && apps+=("${line}"); done < <(list_antigravity_apps)
+
+    if [ -n "${sel}" ] && { [[ "${sel}" == /* ]] || [[ "${sel}" == *.app ]]; }; then
+        p="${sel%/}"
+        if [ ! -d "${p}" ]; then echo "[错误] App 不存在: ${sel}" >&2; return 1; fi
+        if command -v macpatch_is_antigravity_app >/dev/null 2>&1 && ! macpatch_is_antigravity_app "${p}"; then
+            echo "[错误] 不是 Antigravity 应用: ${sel}" >&2; return 1
+        fi
+        echo "${p}"; return 0
+    fi
+
+    if [ -n "${sel}" ] && [[ "${sel}" != [0-9]* ]]; then
+        sel_lower="$(printf '%s' "${sel}" | tr 'A-Z' 'a-z')"
+        for ((i=0; i<${#apps[@]}; i++)); do
+            stem="$(macpatch_app_stem "${apps[$i]}" 2>/dev/null || true)"
+            bid="$(app_bundle_id "${apps[$i]}")"
+            case "${sel_lower}" in
+                ide)
+                    [[ "${bid}" == "com.google.antigravity-ide" || "${stem}" == "Antigravity IDE" ]] \
+                        && { echo "${apps[$i]}"; return 0; } ;;
+                classic|antigravity|pro)
+                    [[ "${bid}" == "com.google.antigravity" || "${stem}" == "Antigravity" ]] \
+                        && { echo "${apps[$i]}"; return 0; } ;;
+                *)
+                    echo "[错误] 未知应用选择器: ${sel}（可选: ide / classic / 序号 / .app 路径）" >&2
+                    return 1 ;;
+            esac
+        done
+        echo "[错误] 没有与 '${sel}' 匹配的已安装应用。当前检测到:" >&2
+        printf '         - %s\n' "${apps[@]}" >&2
+        return 1
+    fi
+
+    if [[ "${sel}" =~ ^[0-9]+$ ]]; then
+        n=$((sel-1))
+        if [ "${n}" -ge 0 ] && [ "${n}" -lt "${#apps[@]}" ]; then
+            echo "${apps[$n]}"; return 0
+        fi
+        echo "[错误] 序号超出范围: ${sel}（共 ${#apps[@]} 个应用）" >&2; return 1
+    fi
+
+    if [ "${#apps[@]}" -eq 0 ]; then
+        echo "[错误] 未检测到任何 Antigravity 应用（Antigravity.app / Antigravity IDE.app）。" >&2
+        return 1
+    fi
+    if [ "${#apps[@]}" -eq 1 ]; then echo "${apps[0]}"; return 0; fi
+    if [ -t 0 ]; then
+        echo "检测到多个 Antigravity 应用，请选择:"
+        for ((i=0; i<${#apps[@]}; i++)); do printf "  %d) %s\n" "$((i+1))" "${apps[$i]}"; done
+        read -r -p "输入序号后回车: " sel
+        pick_antigravity_app "${sel}"
+        return $?
+    fi
+    echo "[错误] 同时检测到多个 Antigravity 应用，请显式指定: $0 app ide | $0 app classic" >&2
+    for ((i=0; i<${#apps[@]}; i++)); do printf '         %d) %s\n' "$((i+1))" "${apps[$i]}" >&2; done
     return 1
 }
 
@@ -223,7 +299,101 @@ ensure_app_ready() {
     EFFECTIVE_APP="${MACPATCH_EFFECTIVE_TARGET:-$(macpatch_tun_sibling "${seed}")}"
 }
 
+# ---- 启动前预检：代理端口可达性 + 残留副本持有旧配置 ----
+# 解析 dylib 实际会读取的 config.json（候选顺序与 dylib 内置逻辑保持一致）
+resolve_runtime_config() {
+    local dylib="$1" c
+    for c in "$(dirname "${dylib}")/config.json" \
+             "$HOME/.config/antigravity-proxy/config.json" \
+             "$HOME/.antigravity-proxy/config.json" \
+             "$(pwd)/config.json"; do
+        [ -f "${c}" ] && { echo "${c}"; return 0; }
+    done
+    return 0
+}
+
+proxy_endpoint_from_config() {
+    local cfg="$1" host port
+    if [ -f "${cfg}" ]; then
+        host="$(sed -n 's/.*"host"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "${cfg}" | head -1)"
+        port="$(sed -n 's/.*"port"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p' "${cfg}" | head -1)"
+    fi
+    echo "${host:-127.0.0.1} ${port:-7890}"
+}
+
+# 精确列出某 TUN 副本路径下正在运行的进程 PID（按 .app/Contents/ 前缀，
+# 不会误伤官方原件或另一个 TUN 副本）
+tun_copy_pids() {
+    local prefix="${1%/}/Contents/"
+    ps -axo pid=,comm= | awk -v p="${prefix}" 'index($0,p){print $1}'
+}
+
+quit_tun_copy() {
+    local app="$1" pids rem i
+    pids="$(tun_copy_pids "${app}")"
+    [ -z "${pids}" ] && return 0
+    # shellcheck disable=SC2086
+    kill -TERM ${pids} 2>/dev/null || true
+    i=0
+    while [ "${i}" -lt 10 ]; do
+        rem="$(tun_copy_pids "${app}")"
+        [ -z "${rem}" ] && return 0
+        sleep 0.5
+        i=$((i+1))
+    done
+    # shellcheck disable=SC2086
+    kill -KILL ${rem} 2>/dev/null || true
+    sleep 0.5
+}
+
+# 代理端口 TCP 预检：连不通时交互询问是否继续，非交互直接中止
+preflight_proxy_reachable() {
+    local cfg="$1" ans host port
+    set -- $(proxy_endpoint_from_config "${cfg}")
+    host="$1"; port="$2"
+    if nc -z -G 2 "${host}" "${port}" >/dev/null 2>&1; then
+        return 0
+    fi
+    echo "[警告] 代理端口 ${host}:${port} 无法连接——代理软件未运行，或端口与配置不一致。"
+    echo "       此状态下启动会出现登录/联网失败，报错形如："
+    echo "       Post \"https://oauth2.googleapis.com/token\": dial tcp ...: connect: connection refused"
+    echo "       请先启动代理软件，或核对/修改配置文件里的 proxy.port。"
+    if [ -t 0 ]; then
+        read -r -p "       仍要继续启动吗？[y/N] " ans
+        case "${ans}" in y|Y|yes|YES) return 0 ;; esac
+    fi
+    echo "       已中止启动。"
+    return 1
+}
+
+# 副本已在运行时：macOS 的 open 只会激活旧进程，改端口/配置后不会重载
+# （language_server 是长驻单例，会一直使用启动时读到的旧配置），询问退出重启
+preflight_restart_running_copy() {
+    local app="$1" pids ans n
+    pids="$(tun_copy_pids "${app}")"
+    [ -z "${pids}" ] && return 0
+    # shellcheck disable=SC2086
+    set -- ${pids}; n="$#"
+    echo "[提示] 该代理副本正在运行（${n} 个进程）。"
+    echo "       再次启动只会激活旧进程；刚修改的代理端口/配置必须重启才会生效。"
+    if [ -t 0 ]; then
+        read -r -p "       退出旧副本（含 language_server）并重新启动吗？[Y/n] " ans
+        case "${ans}" in
+            n|N|no|NO) echo "       保持现有进程运行（注意：新配置不会生效）。"; return 0 ;;
+        esac
+    else
+        echo "       已中止：请先完全退出该副本（⌘Q）后，再重新运行本启动器。"
+        return 1
+    fi
+    echo "       正在退出旧副本..."
+    quit_tun_copy "${app}"
+}
+
 launch_app() {
+    local cfg
+    cfg="$(resolve_runtime_config "${DYLIB_PATH}")"
+    preflight_proxy_reachable "${cfg}" || return 1
+    preflight_restart_running_copy "$1" || return 1
     open -n \
         --env DYLD_INSERT_LIBRARIES="${DYLIB_PATH}" \
         --env DYLD_FORCE_FLAT_NAMESPACE=1 \
@@ -233,9 +403,20 @@ launch_app() {
 
 TARGET="${1:-app}"
 
+if [ "${TARGET}" = "apps" ]; then
+    __i=0
+    while IFS= read -r __app; do
+        __i=$((__i+1))
+        echo "  ${__i}) ${__app}  [$(app_bundle_id "${__app}")]"
+    done < <(list_antigravity_apps)
+    [ "${__i}" -eq 0 ] && echo "  （未检测到 Antigravity.app / Antigravity IDE.app）"
+    exit 0
+fi
+
 if [ "${TARGET}" = "app" ]; then
-    APP_DIR="$(find_antigravity_app || true)"
-    [ -z "${APP_DIR}" ] && { echo "[错误] 未找到 Antigravity.app，可直接传入路径: $0 /path/to/Antigravity.app"; exit 1; }
+    # 可选选择器: ide / classic / 序号 / .app 路径
+    APP_DIR="$(pick_antigravity_app "${2:-}")" || exit 1
+    echo "[目标] ${APP_DIR}"
     ensure_app_ready "${APP_DIR}" || exit 1
     echo "[启动] ${EFFECTIVE_APP}"
     launch_app "${EFFECTIVE_APP}"
@@ -281,7 +462,9 @@ echo " 请确保 ${BIN_DIR} 已加入您的 PATH 环境变量 (例如在 ~/.zshr
 echo "   export PATH=\"${BIN_DIR}:\$PATH\""
 echo ""
 echo " 使用方法:"
-echo "   antigravity-proxy app      # 启动 Antigravity IDE（首次自动创建 TUN 副本并打补丁）"
-echo "   antigravity-proxy agy      # 启动 agy 命令行工具"
-echo "   antigravity-proxy <path>   # 代理指定的 .app 或可执行程序"
+echo "   antigravity-proxy apps            # 列出检测到的全部 Antigravity 应用"
+echo "   antigravity-proxy app             # 启动（多个应用时交互选择）"
+echo "   antigravity-proxy app ide         # 启动 Antigravity IDE（或 classic 启动 Antigravity）"
+echo "   antigravity-proxy agy             # 启动 agy 命令行工具"
+echo "   antigravity-proxy <path>          # 代理指定的 .app 或可执行程序"
 echo "=================================================="

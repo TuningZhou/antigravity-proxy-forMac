@@ -1,7 +1,7 @@
-antigravity_tests 19 8.9125e-05
-process_name_tests 19 9.04166e-05
-udp_policy_tests 19 8.89561e-05
-socket_family_tests 19 7.76733e-05
-local_target_policy_tests 19 8.34013e-05
-fakeip_tests 19 0.000139717
+antigravity_tests 23 0.000110826
+process_name_tests 23 8.61141e-05
+udp_policy_tests 23 6.80652e-05
+socket_family_tests 23 8.65489e-05
+local_target_policy_tests 23 7.79022e-05
+fakeip_tests 23 0.00014175
 ---

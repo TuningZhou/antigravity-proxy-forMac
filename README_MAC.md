@@ -158,14 +158,24 @@ dylib 拦截到该包装脚本时会直接还原为 `language_server` 本体启�
 **方式 A**：双击 `Antigravity-Proxy.command` → 菜单选 **1**（首次会先自动复制 TUN 副本并打签名补丁，随后启动副本）；
 选 **2** 使用 agy 命令行（agy 1.2.x 起为 Agent CLI，详见下方命令示例）。
 
+> **两个 Antigravity 应用怎么选？** 本项目同时支持 **Antigravity**（`Antigravity.app`，Bundle ID `com.google.antigravity`，主程序名 `Antigravity`）与 **Antigravity IDE**（`Antigravity IDE.app`，Bundle ID `com.google.antigravity-ide`，主程序名 `Electron`）；两者共用同一套 Google 登录态。
+> - 只装一个应用时，菜单 **1** 直接启动它，无需任何选择。
+> - 两个都装了时，菜单 **1** 会先弹出应用选择子菜单（`1) Antigravity IDE`、`2) Antigravity`，上次启动的应用会标注"上次使用"，直接回车即可）；选择会记在包目录 `.last-app`，作为下次默认项。首次使用、还没有记忆时同样会弹出该子菜单。
+> - 也可把任意一个官方 `.app` 直接拖到启动器图标上，启动的就是被拖入应用的 TUN 副本。
+
 **方式 B**：在终端执行：
 
 ```bash
 # 已执行安装脚本
-antigravity-proxy app
+antigravity-proxy app                  # 只装一个应用时直接启动；装了两个则交互选择
+antigravity-proxy apps                 # 列出检测到的全部 Antigravity 应用（含序号与 Bundle ID）
+antigravity-proxy app ide              # 明确启动 Antigravity IDE
+antigravity-proxy app classic          # 明确启动 Antigravity（也可用 antigravity 或序号）
 
 # 免安装方式（在项目根目录执行）
 ./scripts/antigravity-proxy.sh app
+./scripts/antigravity-proxy.sh apps
+./scripts/antigravity-proxy.sh app ide      # 或 app 1 / app 2
 
 # agy 命令行（1.2.x 新版无 status/login 子命令）
 antigravity-proxy agy changelog        # 验证联网：拉取更新日志
@@ -173,18 +183,21 @@ antigravity-proxy agy -p "你好"        # 非交互跑一轮对话（需已登�
 antigravity-proxy agy -i               # 交互式对话
 ```
 
+> 选择器语法：`ide` = Antigravity IDE；`classic`（或 `antigravity`）= Antigravity；也支持 `apps` 列出的**序号**与 `.app` 绝对路径。非交互环境（脚本/CI）下若同时装了两个应用又不给选择器，会报错并列出候选，不会替你猜。
+
 > ℹ️ **关于 agy 登录**：agy 是 Antigravity 的命令行 Agent，账号体系与 IDE 共用（`~/.antigravity` / IDE 登录态）。在 **Antigravity IDE 内登录一次**即可，命令行无需也不再提供 `agy login` / `agy status`（旧版命令在 1.2.x 会报 `unexpected argument`）。agy 二进制启用了 Hardened Runtime，首次经启动器运行时会引导你做一次本地 ad-hoc 签名补丁（仅本机生效）。
 
-启动器会自动在 `/Applications`、`~/Applications` 查找官方 Antigravity 原件（自动跳过已有的 TUN 副本）；
+启动器会自动在 `/Applications`、`~/Applications` 查找**全部**官方 Antigravity 原件（`Antigravity.app` 与 `Antigravity IDE.app`，自动跳过已有的 TUN 副本）；
 装在别处时，可直接把**官方 Antigravity.app 拖到启动器图标上**，或在终端传入 `.app` 路径——
 启动器同样只在同目录创建/使用"TUN"副本，不会修改你拖入的原件：
 
 ```bash
 ./scripts/antigravity-proxy.sh "/Applications/Antigravity IDE.app"
+./scripts/antigravity-proxy.sh "/Applications/Antigravity.app"
 ```
 
 启动后正常使用即可，网络流量会自动走代理，无需开启系统全局代理或 TUN 模式。🎉
-程序坞/启动台里认准显示名带 **TUN** 的图标启动代理环境；不带 TUN 的官方图标保持"干净入口"用途。
+程序坞/启动台里认准显示名带 **TUN** 的图标启动代理环境（`Antigravity TUN.app` / `Antigravity IDE TUN.app`）；不带 TUN 的官方图标保持"干净入口"用途。两个 TUN 副本各自独立、互不影响，且与对应官方原件共用同一登录身份。
 
 ### ✅ 怎么确认代理生效了
 
@@ -573,6 +586,8 @@ grep -E "子进程|宿主进程: language_server" output-mac/logs/proxy-*.log | 
 | Helper: Renderer / GPU / Plugin | 渲染、图形、插件 | ✅ | 基本无外网 |
 | language_server_macos_arm ×2 | 登录后 AI 对话流量出口 | ✅ | 多条 →10808 |
 | chrome_crashpad_handler | 仅崩溃上报 | ❌（原始签名，见下） | 实测无外网 |
+
+> **上表以 Antigravity IDE 为例。经典版 `Antigravity.app`（Bundle ID `com.google.antigravity`）同为 Electron 架构，但可执行文件命名不同：主程序名为 `Antigravity`（非 `Electron`），Helper 为 `Antigravity Helper*.app`，agent 后端位于 `Contents/Resources/bin/language_server`（实测无 `sandbox-wrapper` 包装，故不触发 Seatbelt 绕过分支）。dylib 侧 `IsAntigravityBundlePath()` 只按"可执行路径是否含 `antigravity`"判定，`IsLanguageServerProcessName()` 精确命中 `language_server`，因此**两个应用无需区分进程名即可全部注入**；补丁脚本按 Bundle/目录名（stem 以 `Antigravity` 开头）识别，`Antigravity.app` 与 `Antigravity IDE.app` 同样适用。
 
 > **已知非阻塞缺口**：补丁脚本当前只重签 `.app` 主可执行与各 Helper.app。
 > `Electron Framework.framework` 内嵌的裸二进制 `chrome_crashpad_handler`、部分 `.node`

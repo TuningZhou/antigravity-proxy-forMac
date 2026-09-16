@@ -2,6 +2,55 @@
 
 本文件记录 Antigravity-Proxy 的重要变更。格式参考 [Keep a Changelog](https://keepachangelog.com/)。
 
+## 未发布 / Unreleased
+
+### 新增（Added）
+
+- **同时支持两个独立应用：经典版 `Antigravity.app` 与 `Antigravity IDE.app`**。
+  两者 Bundle ID 不同（`com.google.antigravity` / `com.google.antigravity-ide`，
+  主可执行分别为 `Antigravity` / `Electron`），但共用同一套 Google 登录与账号验证。
+  - 启动器新增统一应用发现：固定路径优先 + `mdfind` 三 Bundle ID
+    （`com.google.antigravity-ide`、`com.google.antigravity`、`com.antigravity.desktop`）
+    + FSName 兜底，自动排除自身生成的 "TUN" 副本并按路径去重。
+  - 新增 `apps` 动作列出全部已安装应用（序号 + Bundle ID）；`app` 支持选择器：
+    `ide`、`classic`（别名 `antigravity`/`pro`）、序号、`.app` 绝对路径。
+    只装一个时直选，装多个的非交互环境显式报错，不再替用户猜测。
+  - 图形菜单（`Antigravity-Proxy.command`）菜单 **1** 在检测到多个应用时
+    内联弹出应用选择子菜单（`1) Antigravity IDE` / `2) Antigravity` / `0) 返回`，
+    上次启动的应用标注"上次使用"并作为回车默认项，选择记忆到包目录 `.last-app`）；
+    只装一个应用时不弹子菜单、直接启动。原独立的"菜单 7 切换"已合并进菜单 1。
+  - 菜单 **2** 的 agy 改为子菜单：① `changelog` 验证联网 ② 单次对话 `-p`
+    ③ 交互式 `-i` ④ 自定义参数；每项执行完显示退出码并暂停返回主菜单。
+  - 补丁脚本对经典版生成独立的 `Antigravity TUN.app`（与 IDE 的
+    `Antigravity IDE TUN.app` 互不冲突），并可签名 `Contents/Resources/bin/language_server`。
+
+### 平台行为（Changed）
+
+- dylib 进程识别全面泛化：`IsAntigravityBundlePath()` 按可执行路径含 `antigravity`
+  判定，`IsLanguageServerProcessName()` 精确命中纯名 `language_server`，
+  两个应用无需区分进程名即可全部注入；**C++ 代码零改动**即兼容经典版。
+- `scripts/antigravity-proxy.sh`、`scripts/install-mac.sh` 内嵌启动器、
+  `scripts/package-mac.sh` heredoc 及 dist 内 `Antigravity-Proxy.command`
+  三处启动逻辑统一为同一套枚举/选择函数，语义保持一致。
+
+### 修复（Fixed）
+
+- **修复"修改代理端口后不重启应用，登录持续失败"的问题**。现象为经典版
+  `Antigravity TUN.app` 登录时报
+  `Post "https://oauth2.googleapis.com/token": dial tcp 198.18.0.x:443: connect: connection refused`：
+  应用先于改端口启动，长驻单例后端 `language_server` 一直缓存旧端口，
+  macOS 的 `open` 再次启动只激活旧进程、不重载配置。
+  三处启动器新增启动前预检：
+  1. TCP 探测 `proxy.host:proxy.port`，不通则明确告警（交互可强制继续，非交互直接中止），
+     避免在代理软件未启动/端口不一致时"假启动"；
+  2. 检测到目标 TUN 副本仍在运行时，提示并可一键退出旧副本
+     （TERM 等待 5 秒后 KILL，按 `.app/Contents/` 路径精确匹配，
+     不影响官方原件与另一个 TUN 副本）再重新启动，保证新配置生效。
+- **修复图形菜单中 agy 执行后无法返回、看不到结果的问题**：旧菜单 2 直接
+  `exec agy`，进程结束即关闭终端，既不显示退出码也回不到主菜单。现改为
+  子菜单 + 子进程方式运行，输出直接回显、结束后报告退出码（非 0 附带排障提示）
+  并按回车返回主菜单；命令行非交互用法（`.command agy …`）仍保持 exec 前台语义。
+
 ## 2026-09-15 — macOS 端到端验证版本（Apple Silicon / macOS 26）
 
 本版本在真机完成 macOS 全链路验证：经启动器启动 `Antigravity IDE TUN.app` 后，

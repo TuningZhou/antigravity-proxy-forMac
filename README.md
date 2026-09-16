@@ -806,7 +806,8 @@ target_link_libraries(version PRIVATE ws2_32)
 
 1. **准备代理**：启动 Clash Verge / Surge / V2RayU 等，记下本机 SOCKS5/混合端口（包内默认 `7890`，以软件界面为准）。
 2. 到 [Releases](https://github.com/yuaotian/antigravity-proxy/releases) 下载 **`antigravity-proxy-vX.X-mac-universal2.zip`**，解压后建议把文件夹移到 `~/Applications`（**不要留在桌面/文稿/下载**，否则提权可能报 126），再**右键 → 打开** `Antigravity-Proxy.command`，菜单选 **3** 核对/修改代理端口。
-3. 菜单选 **1** 启动（首次自动复制"Antigravity IDE TUN.app"副本、只对副本打补丁并冒烟验证，随后启动副本）；选 **2** 使用 agy 命令行。
+3. 菜单选 **1** 启动（首次自动复制"<应用名> TUN.app"副本、只对副本打补丁并冒烟验证，随后启动副本）；选 **2** 使用 agy 命令行。
+   同时安装了 **Antigravity** 和 **Antigravity IDE** 两个应用时，菜单 **1** 会先弹出选择子菜单（1 启动 IDE / 2 启动 Antigravity，上次启动的应用标为"上次使用"，回车即默认）；只装一个则直接启动。两者共用同一套 Google 登录态。菜单 **2** 的 agy 也改为子菜单（changelog / 单次对话 / 交互对话 / 自定义参数），执行完显示退出码并可返回主菜单。
 
 **macOS 方式 B：源码安装（开发者）：**
 
@@ -814,7 +815,9 @@ target_link_libraries(version PRIVATE ws2_32)
 ./scripts/install-mac.sh                                         # 自动编译+安装（需先 xcode-select --install）
 export PATH="$HOME/.local/bin:$PATH"                            # 按提示写入 ~/.zshrc
 open -e ~/.config/antigravity-proxy/config.json                # 改 proxy.port
-antigravity-proxy app                                           # 自动准备/启动 TUN 副本
+antigravity-proxy apps                                          # 列出检测到的全部 Antigravity 应用
+antigravity-proxy app                                           # 自动准备/启动 TUN 副本（多个应用时交互选择）
+antigravity-proxy app ide                                       # 明确启动 Antigravity IDE（classic 启动 Antigravity）
 # 或免安装：./build.sh Release && ./scripts/antigravity-proxy.sh app
 ```
 

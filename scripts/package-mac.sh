@@ -153,6 +153,8 @@ DYLIB="${APP_HOME}/libantigravity_proxy.dylib"
 PATCH_SCRIPT="${APP_HOME}/mac-patch-app.sh"
 CONFIG="${APP_HOME}/config.json"
 LOG_DIR="${APP_HOME}/logs"
+# 多应用环境（Antigravity.app 与 Antigravity IDE.app 共存）时记住当前代理目标
+LAST_APP_FILE="${APP_HOME}/.last-app"
 
 if [ -t 1 ]; then
     C_RESET="\033[0m"; C_BOLD="\033[1m"; C_GREEN="\033[32m"; C_YELLOW="\033[33m"; C_RED="\033[31m"; C_CYAN="\033[36m"
@@ -221,8 +223,154 @@ resolve_app_executable() {
     fi
 }
 
-# 查找官方 Antigravity 原件（DIRECT_TARGET 优先，其次常见位置，最后 Spotlight）
-# 注意：自动发现必须排除“... TUN.app”副本——副本由补丁状态单独管理
+# 读取 App 的 Bundle Identifier
+app_bundle_id() {
+    /usr/libexec/PlistBuddy -c 'Print:CFBundleIdentifier' \
+        "${1%/}/Contents/Info.plist" 2>/dev/null || true
+}
+
+# 枚举本机安装的全部官方 Antigravity 原件（排除 TUN 副本），每行一个；
+# 固定路径优先且 IDE 排在前，Spotlight 结果去重后追加。
+list_antigravity_apps() {
+    local cand d acc=""
+    __lapp_add() {
+        local p="${1%/}" stem
+        [ -d "${p}" ] || return 0
+        stem="$(macpatch_app_stem "${p}" 2>/dev/null || basename "${p}" .app)"
+        case "${stem}" in *" TUN") return 0 ;; esac
+        case "|${acc}|" in *"|${p}|"*) ;; *) acc="${acc}|${p}" ;; esac
+    }
+    for cand in \
+        "/Applications/Antigravity IDE.app" \
+        "/Applications/Antigravity.app" \
+        "${HOME}/Applications/Antigravity IDE.app" \
+        "${HOME}/Applications/Antigravity.app"; do
+        __lapp_add "${cand}"
+    done
+    if command -v mdfind >/dev/null 2>&1; then
+        d="$(mdfind "(kMDItemCFBundleIdentifier == 'com.google.antigravity-ide') || (kMDItemCFBundleIdentifier == 'com.google.antigravity') || (kMDItemCFBundleIdentifier == 'com.antigravity.desktop')" 2>/dev/null || true)"
+        while IFS= read -r cand; do __lapp_add "${cand}"; done <<< "${d}"
+        d="$(mdfind "kMDItemContentType == 'com.apple.application-bundle' && (kMDItemFSName == 'Antigravity.app' || kMDItemFSName == 'Antigravity IDE.app')" 2>/dev/null || true)"
+        while IFS= read -r cand; do __lapp_add "${cand}"; done <<< "${d}"
+    fi
+    [ -z "${acc}" ] || printf '%s\n' "${acc:1}" | tr '|' '\n'
+}
+
+# 按选择器挑选一个 App（ide / classic|antigravity / 序号 / .app 路径 / 空）
+pick_antigravity_app() {
+    local sel="${1:-}" apps=() i p stem bid sel_lower n
+    while IFS= read -r line; do [ -n "${line}" ] && apps+=("${line}"); done < <(list_antigravity_apps)
+
+    if [ -n "${sel}" ] && { [[ "${sel}" == /* ]] || [[ "${sel}" == *.app ]]; }; then
+        p="${sel%/}"
+        if [ ! -d "${p}" ]; then echo "[错误] App 不存在: ${sel}" >&2; return 1; fi
+        if command -v macpatch_is_antigravity_app >/dev/null 2>&1 && ! macpatch_is_antigravity_app "${p}"; then
+            echo "[错误] 不是 Antigravity 应用: ${sel}" >&2; return 1
+        fi
+        echo "${p}"; return 0
+    fi
+
+    if [ -n "${sel}" ] && [[ "${sel}" != [0-9]* ]]; then
+        sel_lower="$(printf '%s' "${sel}" | tr 'A-Z' 'a-z')"
+        for ((i=0; i<${#apps[@]}; i++)); do
+            stem="$(macpatch_app_stem "${apps[$i]}" 2>/dev/null || true)"
+            bid="$(app_bundle_id "${apps[$i]}")"
+            case "${sel_lower}" in
+                ide)
+                    [[ "${bid}" == "com.google.antigravity-ide" || "${stem}" == "Antigravity IDE" ]] \
+                        && { echo "${apps[$i]}"; return 0; } ;;
+                classic|antigravity|pro)
+                    [[ "${bid}" == "com.google.antigravity" || "${stem}" == "Antigravity" ]] \
+                        && { echo "${apps[$i]}"; return 0; } ;;
+                *)
+                    echo "[错误] 未知应用选择器: ${sel}（可选: ide / classic / 序号 / .app 路径）" >&2
+                    return 1 ;;
+            esac
+        done
+        echo "[错误] 没有与 '${sel}' 匹配的已安装应用。当前检测到:" >&2
+        printf '         - %s\n' "${apps[@]}" >&2
+        return 1
+    fi
+
+    if [[ "${sel}" =~ ^[0-9]+$ ]]; then
+        n=$((sel-1))
+        if [ "${n}" -ge 0 ] && [ "${n}" -lt "${#apps[@]}" ]; then
+            echo "${apps[$n]}"; return 0
+        fi
+        echo "[错误] 序号超出范围: ${sel}（共 ${#apps[@]} 个应用）" >&2; return 1
+    fi
+
+    if [ "${#apps[@]}" -eq 0 ]; then
+        echo "[错误] 未检测到任何 Antigravity 应用（Antigravity.app / Antigravity IDE.app）。" >&2
+        return 1
+    fi
+    if [ "${#apps[@]}" -eq 1 ]; then echo "${apps[0]}"; return 0; fi
+    if [ -t 0 ] && [ -t 1 ]; then
+        echo "检测到多个 Antigravity 应用，请选择:"
+        for ((i=0; i<${#apps[@]}; i++)); do printf "  %d) %s\n" "$((i+1))" "${apps[$i]}"; done
+        read -r -p "输入序号后回车: " sel
+        pick_antigravity_app "${sel}"
+        return $?
+    fi
+    echo "[错误] 同时检测到多个 Antigravity 应用，请指定选择器: ide / classic / 序号 / .app 路径" >&2
+    for ((i=0; i<${#apps[@]}; i++)); do printf '         %d) %s\n' "$((i+1))" "${apps[$i]}" >&2; done
+    return 1
+}
+
+# 菜单当前代理目标：优先 .last-app 记忆，其次第一个；拖放启动时以 DIRECT_TARGET 为准
+current_menu_app() {
+    if [ -n "${DIRECT_TARGET:-}" ]; then find_antigravity_app; return $?; fi
+    local apps=() saved a
+    while IFS= read -r line; do [ -n "${line}" ] && apps+=("${line}"); done < <(list_antigravity_apps)
+    [ "${#apps[@]}" -eq 0 ] && return 1
+    if [ "${#apps[@]}" -eq 1 ]; then echo "${apps[0]}"; return 0; fi
+    saved="$(cat "${LAST_APP_FILE}" 2>/dev/null || true)"
+    if [ -n "${saved}" ]; then
+        for a in "${apps[@]}"; do
+            [ "${a}" == "${saved%/}" ] && { echo "${a}"; return 0; }
+        done
+    fi
+    echo "${apps[0]}"
+}
+
+# 菜单 1 使用：选择要以代理模式启动的应用。
+# 单应用直接启动；多应用（含首次启动、无记忆文件）弹子菜单列出全部候选，
+# 选中的应用写入 .last-app 作为下次默认项。
+choose_app_and_launch() {
+    local apps=() i choice picked default_idx=1 saved nm mark
+    while IFS= read -r line; do [ -n "${line}" ] && apps+=("${line}"); done < <(list_antigravity_apps)
+    if [ "${#apps[@]}" -eq 0 ]; then
+        echo -e "${C_RED}[错误] 没有找到 Antigravity.app / Antigravity IDE.app。${C_RESET}"
+        echo "可把官方应用拖到本启动器（${0##*/}）图标上，或确认其已安装到 /Applications。"
+        return 1
+    fi
+    if [ "${#apps[@]}" -eq 1 ]; then
+        launch_app "${apps[0]}"
+        return $?
+    fi
+    saved="$(cat "${LAST_APP_FILE}" 2>/dev/null || true)"
+    echo ""
+    echo "检测到 ${#apps[@]} 个 Antigravity 应用，请选择要以透明代理模式启动的："
+    for ((i=0; i<${#apps[@]}; i++)); do
+        nm="$(macpatch_app_stem "${apps[$i]}" 2>/dev/null || basename "${apps[$i]}" .app)"
+        mark=""
+        if [ -n "${saved}" ] && [ "${saved%/}" == "${apps[$i]}" ]; then
+            mark="  ${C_YELLOW}（上次使用）${C_RESET}"
+            default_idx=$((i+1))
+        fi
+        echo -e "  ${C_BOLD}$((i+1))${C_RESET}) 启动 ${nm}${mark}"
+    done
+    echo -e "  ${C_BOLD}0${C_RESET}) 返回主菜单"
+    read -r -p "请输入选项编号 [0-${#apps[@]}]（直接回车 = ${default_idx}）: " choice
+    [ -z "${choice}" ] && choice="${default_idx}"
+    [ "${choice}" = "0" ] && return 0
+    picked="$(pick_antigravity_app "${choice}")" || { echo "无效选择，已返回主菜单。"; return 1; }
+    echo "${picked}" > "${LAST_APP_FILE}"
+    echo ""
+    launch_app "${picked}"
+}
+
+# 查找官方 Antigravity 原件：拖放/命令行 DIRECT_TARGET 优先；否则返回排序第一的原件
 find_antigravity_app() {
     _tun_is_original_path() { case "$(macpatch_app_stem "$1" 2>/dev/null || basename "$1" .app)" in
         *" TUN") return 1 ;; *) return 0 ;; esac; }
@@ -237,25 +385,7 @@ find_antigravity_app() {
             echo "${app_of}"; return 0
         fi
     fi
-    local cand found
-    for cand in \
-        "/Applications/Antigravity IDE.app" \
-        "/Applications/Antigravity.app" \
-        "${HOME}/Applications/Antigravity IDE.app" \
-        "${HOME}/Applications/Antigravity.app"; do
-        [ -d "${cand}" ] && { echo "${cand}"; return 0; }
-    done
-    if command -v mdfind >/dev/null 2>&1; then
-        found="$(mdfind "(kMDItemCFBundleIdentifier == 'com.google.antigravity-ide') || (kMDItemCFBundleIdentifier == 'com.antigravity.desktop')" 2>/dev/null || true)"
-        while IFS= read -r d; do
-            [ -n "${d}" ] && [ -d "${d}" ] && _tun_is_original_path "${d}" && { echo "${d%/}"; return 0; }
-        done <<< "${found}"
-        found="$(mdfind "kMDItemContentType == 'com.apple.application-bundle' && (kMDItemFSName == 'Antigravity.app' || kMDItemFSName == 'Antigravity IDE.app')" 2>/dev/null || true)"
-        while IFS= read -r d; do
-            [ -n "${d}" ] && [ -d "${d}" ] && _tun_is_original_path "${d}" && { echo "${d%/}"; return 0; }
-        done <<< "${found}"
-    fi
-    return 1
+    list_antigravity_apps | head -n 1
 }
 
 find_agy() {
@@ -530,26 +660,121 @@ ensure_app_ready() {
     esac
 }
 
+# ---- 启动前预检：代理端口可达性 + 残留副本持有旧配置 ----
+# 解析 dylib 实际会读取的 config.json（候选顺序与 dylib 内置逻辑保持一致）
+resolve_runtime_config() {
+    local dylib="$1" c
+    for c in "$(dirname "${dylib}")/config.json" \
+             "$HOME/.config/antigravity-proxy/config.json" \
+             "$HOME/.antigravity-proxy/config.json" \
+             "$(pwd)/config.json"; do
+        [ -f "${c}" ] && { echo "${c}"; return 0; }
+    done
+    return 0
+}
+
+proxy_endpoint_from_config() {
+    local cfg="$1" host port
+    if [ -f "${cfg}" ]; then
+        host="$(sed -n 's/.*"host"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "${cfg}" | head -1)"
+        port="$(sed -n 's/.*"port"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p' "${cfg}" | head -1)"
+    fi
+    echo "${host:-127.0.0.1} ${port:-7890}"
+}
+
+# 精确列出某 TUN 副本路径下正在运行的进程 PID（按 .app/Contents/ 前缀，
+# 不会误伤官方原件或另一个 TUN 副本）
+tun_copy_pids() {
+    local prefix="${1%/}/Contents/"
+    ps -axo pid=,comm= | awk -v p="${prefix}" 'index($0,p){print $1}'
+}
+
+quit_tun_copy() {
+    local app="$1" pids rem i
+    pids="$(tun_copy_pids "${app}")"
+    [ -z "${pids}" ] && return 0
+    # shellcheck disable=SC2086
+    kill -TERM ${pids} 2>/dev/null || true
+    i=0
+    while [ "${i}" -lt 10 ]; do
+        rem="$(tun_copy_pids "${app}")"
+        [ -z "${rem}" ] && return 0
+        sleep 0.5
+        i=$((i+1))
+    done
+    # shellcheck disable=SC2086
+    kill -KILL ${rem} 2>/dev/null || true
+    sleep 0.5
+}
+
+# 代理端口 TCP 预检：连不通时交互询问是否继续，非交互直接中止
+preflight_proxy_reachable() {
+    local cfg="$1" ans host port
+    set -- $(proxy_endpoint_from_config "${cfg}")
+    host="$1"; port="$2"
+    if nc -z -G 2 "${host}" "${port}" >/dev/null 2>&1; then
+        return 0
+    fi
+    echo -e "${C_YELLOW:-}[警告] 代理端口 ${host}:${port} 无法连接——代理软件未运行，或端口与配置不一致。${C_RESET:-}"
+    echo "       此状态下启动会出现登录/联网失败，报错形如："
+    echo "       Post \"https://oauth2.googleapis.com/token\": dial tcp ...: connect: connection refused"
+    echo "       请先启动代理软件，或核对/修改配置文件里的 proxy.port。"
+    if [ -t 0 ]; then
+        read -r -p "       仍要继续启动吗？[y/N] " ans
+        case "${ans}" in y|Y|yes|YES) return 0 ;; esac
+    fi
+    echo "       已中止启动。"
+    return 1
+}
+
+# 副本已在运行时：macOS 的 open 只会激活旧进程，改端口/配置后不会重载
+# （language_server 是长驻单例，会一直使用启动时读到的旧配置），询问退出重启
+preflight_restart_running_copy() {
+    local app="$1" pids ans n
+    pids="$(tun_copy_pids "${app}")"
+    [ -z "${pids}" ] && return 0
+    # shellcheck disable=SC2086
+    set -- ${pids}; n="$#"
+    echo -e "${C_YELLOW:-}[提示] 该代理副本正在运行（${n} 个进程）。${C_RESET:-}"
+    echo "       再次启动只会激活旧进程；刚修改的代理端口/配置必须重启才会生效。"
+    if [ -t 0 ]; then
+        read -r -p "       退出旧副本（含 language_server）并重新启动吗？[Y/n] " ans
+        case "${ans}" in
+            n|N|no|NO) echo "       保持现有进程运行（注意：新配置不会生效）。"; return 0 ;;
+        esac
+    else
+        echo "       已中止：请先完全退出该副本（⌘Q）后，再重新运行本启动器。"
+        return 1
+    fi
+    echo "       正在退出旧副本..."
+    quit_tun_copy "${app}"
+}
+
 # 以注入环境启动 .app（LaunchServices 会自动重建完整进程树）
 # 始终启动“代理专用副本”，官方原件不触碰
 launch_app() {
     local seed="${1:-}" app_dir exe
     if [ -z "${seed}" ]; then
-        app_dir="$(find_antigravity_app || true)"
+        app_dir="$(current_menu_app || true)"
     else
         app_dir="${seed%/}"
     fi
     if [ -z "${app_dir}" ]; then
-        echo -e "${C_RED}[错误] 没有找到 Antigravity.app。${C_RESET}"
+        echo -e "${C_RED}[错误] 没有找到 Antigravity.app / Antigravity IDE.app。${C_RESET}"
         echo ""
         echo "请尝试以下任一方式："
-        echo "  1) 把 Antigravity.app 拖到本启动器（${0##*/}）图标上再松开"
+        echo "  1) 把 Antigravity 应用拖到本启动器（${0##*/}）图标上再松开"
         echo "  2) 确认 Antigravity 已安装到 /Applications 或“应用程序”文件夹"
+        echo "  3) 菜单选 1，在子菜单中指定要代理的应用"
         return 1
     fi
 
+    # 预检顺序：先确认代理端口通（避免无谓等待补丁），再准备副本，
+    # 最后处理“副本已在运行、持有旧配置”的常见情况
+    preflight_proxy_reachable "${CONFIG}" || return 1
     ensure_app_ready "${app_dir}" || return 1
     exe="$(resolve_app_executable "${EFFECTIVE_APP}")"
+    preflight_restart_running_copy "${EFFECTIVE_APP}" || return 1
 
     echo -e "${C_GREEN}[启动] 正在以透明代理模式启动 Antigravity（代理专用副本）...${C_RESET}"
     echo "       副本: ${EFFECTIVE_APP}"
@@ -578,9 +803,79 @@ launch_agy() {
     DYLD_INSERT_LIBRARIES="${DYLIB}" DYLD_FORCE_FLAT_NAMESPACE=1 exec "${bin}" "$@"
 }
 
+# 以前台子进程方式运行 agy（不 exec，保证结束后能回到菜单），并报告退出码
+run_agy_capture() {
+    local bin rc
+    bin="$(find_agy)"
+    if [ -z "${bin}" ]; then
+        echo -e "${C_RED}[错误] 没有找到 agy 命令。${C_RESET}"
+        echo "请先安装 Antigravity CLI（agy），或在其安装后重试。"
+        pause
+        return 1
+    fi
+    if ! ensure_patch "${bin}"; then
+        pause
+        return 1
+    fi
+    echo -e "${C_GREEN}[启动] agy 透明代理模式: ${bin} $*${C_RESET}"
+    echo "       agy 的输出会直接显示在下方；结束后按回车即可返回菜单。"
+    echo ""
+    DYLD_INSERT_LIBRARIES="${DYLIB}" DYLD_FORCE_FLAT_NAMESPACE=1 "${bin}" "$@"
+    rc=$?
+    echo ""
+    if [ "${rc}" -eq 0 ]; then
+        echo -e "${C_GREEN}[完成] agy 已正常结束（退出码 0）。${C_RESET}"
+    else
+        echo -e "${C_YELLOW}[提示] agy 已结束，退出码 ${rc}（非 0，可能是手动中断或命令报错）。${C_RESET}"
+        echo "       排障建议：确认代理软件已启动且菜单顶部端口正确；先选本菜单 1"
+        echo "       用 changelog 验证联网；agy 1.2.x 已无 status/login 子命令。"
+    fi
+    pause
+}
+
+# 菜单 2：agy 命令行子菜单（每项执行完都能看到结果并返回，不会直接退出启动器）
+agy_menu() {
+    local sub question
+    while true; do
+        print_header
+        echo "  agy 是 Antigravity 的命令行 Agent，账号体系与图形应用共用（登录一次即可）。"
+        echo ""
+        echo -e "  ${C_BOLD}1${C_RESET}) 验证联网：agy changelog（拉取更新日志，最快判断代理是否通）"
+        echo -e "  ${C_BOLD}2${C_RESET}) 单次对话：agy -p \"你的问题\"（跑完即返回本菜单）"
+        echo -e "  ${C_BOLD}3${C_RESET}) 交互式对话：agy -i（在 agy 内输入 /exit 或按 Ctrl+D 退回本菜单）"
+        echo -e "  ${C_BOLD}4${C_RESET}) 自定义参数（输入任意 agy 参数，如 --help 或 /hooks）"
+        echo -e "  ${C_BOLD}0${C_RESET}) 返回主菜单"
+        echo ""
+        read -r -p "请输入选项编号后回车: " sub
+        case "${sub}" in
+            1)
+                run_agy_capture changelog ;;
+            2)
+                read -r -p "请输入要问 agy 的问题（直接回车取消）: " question
+                if [ -n "${question}" ]; then
+                    run_agy_capture -p "${question}"
+                fi ;;
+            3)
+                echo "提示：进入 agy 交互对话后，输入 /exit 或按 Ctrl+D 结束并返回本菜单。"
+                run_agy_capture -i ;;
+            4)
+                read -r -p "请输入 agy 参数（直接回车取消，例如: --help）: " question
+                if [ -n "${question}" ]; then
+                    # 故意不加引号：允许用户输入多个参数
+                    run_agy_capture ${question}
+                fi ;;
+            0|"")
+                return 0 ;;
+            *)
+                echo "无效选项，请重新输入。"
+                sleep 1 ;;
+        esac
+    done
+}
+
 # 非交互参数直通：./Antigravity-Proxy.command /path/to/Antigravity.app
 DIRECT_TARGET=""
-if [ $# -gt 0 ] && [ "$1" != "app" ] && [ "$1" != "agy" ]; then
+if [ $# -gt 0 ] && [ "$1" != "app" ] && [ "$1" != "agy" ] && [ "$1" != "apps" ]; then
     DIRECT_TARGET="$1"
     shift
 fi
@@ -614,9 +909,22 @@ fi
 
 if [ $# -gt 0 ]; then
     case "$1" in
-        app) shift; launch_app "" "$@" ;;
+        app)
+            shift
+            app_sel="${1:-}"
+            if [ -n "${app_sel}" ]; then
+                shift
+                app_path="$(pick_antigravity_app "${app_sel}")" || exit 1
+                launch_app "${app_path}" "$@"
+            else
+                launch_app "" "$@"
+            fi ;;
+        apps)
+            echo "检测到以下 Antigravity 应用:"
+            list_antigravity_apps | cat -n | sed 's/^/  /'
+            exit 0 ;;
         agy) shift; launch_agy "$@" ;;
-        *)    echo "[错误] 未知参数: $1（可选: app / agy）"; exit 1 ;;
+        *)    echo "[错误] 未知参数: $1（可选: app [ide|classic|序号|路径] / apps / agy）"; exit 1 ;;
     esac
     exit $?
 fi
@@ -625,8 +933,14 @@ fi
 while true; do
     print_header
     PORT="$(current_proxy_port)"
-    APP_DIR="$(find_antigravity_app || true)"
-    PATCH_STATE="未找到 Antigravity.app"
+    # 全部已安装原件 & 上次启动的代理目标（菜单 1 选择后写入 .last-app）
+    APP_LIST=()
+    while IFS= read -r line; do [ -n "${line}" ] && APP_LIST+=("${line}"); done < <(list_antigravity_apps)
+    APP_COUNT="${#APP_LIST[@]}"
+    APP_DIR="$(current_menu_app || true)"
+    CURRENT_NAME=""
+    [ -n "${APP_DIR}" ] && CURRENT_NAME="$(macpatch_app_stem "${APP_DIR}" 2>/dev/null || basename "${APP_DIR}" .app)"
+    PATCH_STATE="未找到 Antigravity 应用"
     COPY_PATH=""
     if [ -n "${APP_DIR}" ]; then
         COPY_PATH="$(macpatch_tun_sibling "${APP_DIR}")"
@@ -650,27 +964,30 @@ while true; do
     if [ -n "${APP_DIR}" ]; then
         echo "           官方原件: ${APP_DIR}（不会被修改）"
         echo "           代理副本: ${COPY_PATH}"
+        if [ "${APP_COUNT}" -gt 1 ]; then
+            echo -e "           本机共检测到 ${C_BOLD}${APP_COUNT}${C_RESET} 个 Antigravity 应用，上次启动: ${C_CYAN}${CURRENT_NAME}${C_RESET}（选 1 可切换）"
+        fi
     fi
     echo ""
-    echo -e "  ${C_BOLD}1${C_RESET}) 启动 Antigravity IDE（透明代理模式，使用代理副本）"
-    echo -e "  ${C_BOLD}2${C_RESET}) 启动 agy 命令行（changelog / 对话等）"
+    if [ "${APP_COUNT}" -gt 1 ]; then
+        echo -e "  ${C_BOLD}1${C_RESET}) 启动 Antigravity 或 Antigravity IDE（透明代理模式，使用代理副本）"
+    else
+        echo -e "  ${C_BOLD}1${C_RESET}) 启动 ${CURRENT_NAME:-Antigravity}（透明代理模式，使用代理副本）"
+    fi
+    echo -e "  ${C_BOLD}2${C_RESET}) agy 命令行（验证联网 changelog / 单次对话 / 交互式对话）"
     echo -e "  ${C_BOLD}3${C_RESET}) 编辑配置文件 config.json（改代理端口）"
     echo -e "  ${C_BOLD}4${C_RESET}) 查看代理日志（logs 文件夹）"
     echo -e "  ${C_BOLD}5${C_RESET}) 打开《使用说明》"
-    echo -e "  ${C_BOLD}6${C_RESET}) 重新检测/创建/修复代理副本"
+    echo -e "  ${C_BOLD}6${C_RESET}) 重新检测/创建/修复代理副本（针对上次启动的应用）"
     echo -e "  ${C_BOLD}0${C_RESET}) 退出"
     echo ""
     read -r -p "请输入选项编号后回车: " choice
     case "${choice}" in
         1)
-            launch_app
+            choose_app_and_launch
             pause ;;
         2)
-            echo ""
-            read -r -p "请输入 agy 参数（直接回车默认 changelog 验证联网，对话可输入 -p \"问题\"）: " agy_args
-            # 故意不加引号：允许用户输入多个参数
-            launch_agy ${agy_args:-changelog}
-            pause ;;
+            agy_menu ;;
         3)
             open -e "${CONFIG}"
             echo "已用“文本编辑”打开 config.json，改完记得保存（Cmd+S）。"
@@ -691,11 +1008,11 @@ while true; do
             pause ;;
         6)
             if [ -z "${APP_DIR}" ]; then
-                echo "没有找到 Antigravity.app，无法创建代理副本。"
+                echo "没有找到 Antigravity 应用，无法创建代理副本。"
             else
                 state_word="$(macpatch_tun_status_word "${APP_DIR}" 2>/dev/null || echo invalid)"
                 if [ "${state_word}" = "ready" ]; then
-                    echo "代理副本状态正常，无需修复："
+                    echo "当前应用（${CURRENT_NAME}）的代理副本状态正常，无需修复："
                     echo "  ${COPY_PATH}"
                     echo "（官方 Antigravity 升级后，选 1 按提示重建副本即可）"
                 else
@@ -747,18 +1064,30 @@ SOCKS5/HTTP 代理，不需要开启系统全局代理或 TUN 模式。
 
 2. 启动 Antigravity
    回到菜单选 1。第一次会自动完成两件事（全程约 1 分钟）：
-   a) 在官方 Antigravity 旁边自动复制一份“Antigravity IDE TUN.app”
+   a) 在官方应用旁边自动复制一份“Antigravity IDE TUN.app”
       （或“Antigravity TUN.app”）——官方原件一个字节都不会被修改；
    b) 只对这份副本执行一次“本地签名补丁”（见下文说明）。
    完成后自动启动的是副本。也可以在菜单选 2 使用 agy 命令行。
-   （agy 1.2.x 是 Agent CLI，已无 status/login 子命令；菜单 2 默认执行
-     agy changelog 验证联网，对话可在 IDE 登录后用 agy -p "你的问题"。）
+   （agy 1.2.x 是 Agent CLI，已无 status/login 子命令；菜单 2 是子菜单：
+     1 验证联网 changelog、2 单次对话 -p、3 交互式 -i、4 自定义参数，
+     每项执行完会显示退出码，按回车即返回，不会直接关掉启动器。）
+
+   ★ 同时装了 Antigravity 和 Antigravity IDE 两个应用？
+     两者是不同的 App，但共用同一套 Google 登录账号。
+     - 菜单 1 会先弹出选择子菜单：1) 启动 Antigravity IDE
+       2) 启动 Antigravity（上次启动的那个会标注“上次使用”，直接回车即可）；
+     - 只装了其中一个时不弹子菜单，菜单 1 直接启动它；
+     - 首次使用、还没有记住选择时同样会弹出该子菜单；
+     - 也可以把任意一个官方 App 直接拖到本启动器图标上启动它的副本。
+     命令行方式：Antigravity-Proxy.command apps        列出全部应用
+                 Antigravity-Proxy.command app ide     启动 IDE
+                 Antigravity-Proxy.command app classic 启动 Antigravity
 
 3. 以后每次使用
    只要代理软件已经开着，直接双击“Antigravity-Proxy.command”，选 1 即可。
-   启动器永远启动“Antigravity IDE TUN”这份代理副本；
-   不要直接从启动台/程序坞点 Antigravity 图标——那是官方原件，不走代理。
-   （原件和副本共用同一个登录状态，无需重新登录；但两者不要同时开。）
+   启动器会启动当前代理目标的 TUN 副本（Antigravity TUN 或 Antigravity IDE TUN）；
+   不要直接从启动台/程序坞点不带 TUN 的官方图标——那是官方原件，不走代理。
+   （原件和副本共用同一个登录状态，无需重新登录；同一应用的原件与副本不要同时开。）
 
 【什么是“本地签名补丁”？安全吗？】
 官方 Antigravity 带有苹果 Hardened Runtime 保护，默认禁止任何第三方

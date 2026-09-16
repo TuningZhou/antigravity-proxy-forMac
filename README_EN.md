@@ -770,7 +770,8 @@ Launch the target application, done! 🎉
 
 1. **Prepare a proxy**: start Clash Verge / Surge / V2RayU / sing-box and note your local SOCKS5/mixed port (the package defaults to `7890`; check the app UI).
 2. Download **`antigravity-proxy-vX.X-mac-universal2.zip`** from [Releases](https://github.com/yuaotian/antigravity-proxy/releases), unzip, then **move the folder to `~/Applications`** (do **not** leave it in Desktop/Documents/Downloads — TCC privacy protection can cause a 126 error during privilege escalation). Then **right-click → Open** on `Antigravity-Proxy.command`, choose menu item **3** to verify/change the proxy port.
-3. Choose menu item **1** to launch (the first run creates the "Antigravity IDE TUN.app" copy, patches the copy only, runs an injection smoke test, then launches it); choose **2** for the agy CLI.
+3. Choose menu item **1** to launch (the first run creates the "<AppName> TUN.app" copy, patches the copy only, runs an injection smoke test, then launches it); choose **2** for the agy CLI.
+   When **both** Antigravity and Antigravity IDE are installed, menu **1** first shows a picker submenu (1 for IDE / 2 for Antigravity; the last-used app is marked and chosen by pressing Enter); with only one app installed it launches directly. The two share the same Google login session. Menu **2** (agy) is now a submenu too (changelog / one-shot prompt / interactive / custom args): each run reports its exit code and returns to the main menu.
 
 **Option B — install from source (developers):**
 
@@ -778,7 +779,9 @@ Launch the target application, done! 🎉
 ./scripts/install-mac.sh                                         # builds + installs (run xcode-select --install first)
 export PATH="$HOME/.local/bin:$PATH"                            # add it to ~/.zshrc as suggested
 open -e ~/.config/antigravity-proxy/config.json                # set proxy.port
-antigravity-proxy app                                           # prepares/launches the TUN copy
+antigravity-proxy apps                                          # list every detected Antigravity app
+antigravity-proxy app                                           # prepares/launches the TUN copy (asks if several)
+antigravity-proxy app ide                                       # force Antigravity IDE (use "classic" for Antigravity)
 # portable alternative: ./build.sh Release && ./scripts/antigravity-proxy.sh app
 ```
 
