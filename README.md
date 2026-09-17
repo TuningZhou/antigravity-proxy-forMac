@@ -18,11 +18,12 @@
 
 ---
 
-> 📌 **分支定位说明**：本分支（`antigravity-proxy-forMacOS`）专门负责 **macOS 版本**的透明代理实现；Windows 版本由 `main` 分支统一维护。
+> 📌 **分支定位说明**：本分支（`antigravity-proxy-forMacOS`）专门负责 **macOS 版本**的透明代理实现；Windows 版本由 `main` 分支统一维护。（感谢原作者 yuaotian：https://github.com/yuaotian/antigravity-proxy）
 > 
 > 📖 **macOS 专有文档导航**：
 > - 想要阅读最全面、包含各类实机避坑与底层探究的详尽指南？欢迎阅读 👉 [**macOS 使用与测试完整指南 (README_MAC.md)**](README_MAC.md)
 > - Windows 版本请切换至 👉 [**main 分支**](https://github.com/TuningZhou/antigravity-proxy-forMac/tree/main)
+
 
 本项目已全面支持 macOS 操作系统（兼容 Apple Silicon M1/M2/M3/M4 ARM64 与 Intel x86_64 架构），实现了与 Windows 端一致的**透明代理、FakeIP 域名映射、路由分流规则、子进程继承传播**等全部核心功能。
 
@@ -534,6 +535,8 @@ grep -E "子进程|宿主进程: language_server" output-mac/logs/proxy-*.log | 
 ---
 
 ## 👤 关于作者 / Author
+
+本项目由图灵君（TuningZhou）制作与维护，感谢原作者 yuaotian：https://github.com/yuaotian/antigravity-proxy
 
 <table>
   <tr>
