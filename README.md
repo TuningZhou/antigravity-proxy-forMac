@@ -19,6 +19,10 @@
 ---
 
 > 📌 **分支定位说明**：本分支（`antigravity-proxy-forMacOS`）专门负责 **macOS 版本**的透明代理实现；Windows 版本由 `main` 分支统一维护。
+> 
+> 📖 **macOS 专有文档导航**：
+> - 想要阅读最全面、包含各类实机避坑与底层探究的详尽指南？欢迎阅读 👉 [**macOS 使用与测试完整指南 (README_MAC.md)**](README_MAC.md)
+> - Windows 版本请切换至 👉 [**main 分支**](https://github.com/yuaotian/antigravity-proxy/tree/main)
 
 本项目已全面支持 macOS 操作系统（兼容 Apple Silicon M1/M2/M3/M4 ARM64 与 Intel x86_64 架构），实现了与 Windows 端一致的**透明代理、FakeIP 域名映射、路由分流规则、子进程继承传播**等全部核心功能。
 
@@ -28,6 +32,7 @@
 
 ## 目录
 
+- [📖 完整详尽手册 / Full Guide (README_MAC.md)](README_MAC.md)
 - [一、核心实现原理](#一核心实现原理)
 - [二、普通用户使用方法 / Usage（3 步上手）](#二普通用户使用方法--usage3-步上手)
 - [三、Mac 电脑环境准备（编译依赖）](#三mac-电脑环境准备编译依赖)
@@ -41,6 +46,8 @@
   - [测试 5：子进程注入与日志审查验证](#测试-5子进程注入与日志审查验证)
 - [七、macOS 常见问题与排坑指南 (SIP / 安全机制)](#七macos-常见问题与排坑指南-sip--安全机制)
 - [附录 A：端到端验证记录（2026-09-15）](#附录-a端到端验证记录2026-09-15)
+- [📄 许可证 / License](#-许可证--license)
+- [👤 关于作者 / Author](#-关于作者--author)
 
 ---
 
@@ -523,3 +530,71 @@ grep -E "子进程|宿主进程: language_server" output-mac/logs/proxy-*.log | 
 ## 📄 许可证 / License
 
 本项目基于 [BSD-2-Clause 许可证](LICENSE.txt) 开源。
+
+---
+
+## 👤 关于作者 / Author
+
+<table>
+  <tr>
+    <td align="center">
+      <b>煎饼果子（86）</b><br/>
+      <sub>独立开发者 / Independent Developer</sub>
+    </td>
+  </tr>
+</table>
+
+### 📱 联系方式 / Contact
+
+| 平台 | 信息 |
+|------|------|
+| **微信** | JavaRookie666 |
+| **Telegram** | [@yuaotian](https://t.me/yuaotian) |
+| **GitHub** | [@yuaotian](https://github.com/yuaotian) |
+
+### 🎁 支持作者 / Support
+
+如果这个项目对你有帮助，欢迎：
+- ⭐ 给项目点个 Star
+- 🔗 分享给需要的朋友
+- 💬 提交 Issue 或 PR
+
+<table>
+  <tr>
+    <td align="center">
+      <img src="img/wx_add_qr.png" alt="微信二维码" width="200"/><br/>
+      <sub>添加微信交流</sub>
+    </td>
+    <td align="center">
+      <img src="img/wx_gzh_qr.jpg" alt="公众号二维码" width="200"/><br/>
+      <sub>关注公众号</sub>
+    </td>
+    <td align="center">
+      <img src="img/qun-23.jpg" alt="微信群二维码" width="200"/><br/>
+      <sub>🔥 加入微信交流群</sub>
+    </td>
+  </tr>
+</table>
+
+### 💰 打赏支持 / Donate
+
+如果这个项目帮到了你，可以请作者喝杯咖啡 ☕
+
+<table>
+  <tr>
+    <td align="center">
+      <img src="img/wx_zsm.jpg" alt="微信赞赏码" width="200"/><br/>
+      <sub>微信赞赏</sub>
+    </td>
+    <td align="center">
+      <img src="img/zfb.png" alt="支付宝收款码" width="200"/><br/>
+      <sub>支付宝打赏</sub>
+    </td>
+  </tr>
+</table>
+
+---
+
+<p align="center">
+  <sub>Made with ❤️ by 煎饼果子（86）</sub>
+</p>
