@@ -14,14 +14,20 @@
 .idea/
 .sanshu-memory/
 
-#输出文件
-output/
-log/
+# 本机测试和运行日志
+*.log
+logs/
+**/logs/
+output-mac/logs/
+build-mac/logs/
+build-mac/Testing/
 
-*.zip
+# 压缩文件
 *.7z
 
 # macOS 打包产物与本地临时文件
-dist/
+# 忽略 dist 的子文件夹，但允许 .zip 文件
+dist/*/
+!dist/*.zip
 stub.command
 .last-app

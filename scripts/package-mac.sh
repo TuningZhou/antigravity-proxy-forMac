@@ -341,37 +341,57 @@ current_menu_app() {
 # 单应用直接启动；多应用（含首次启动、无记忆文件）弹子菜单列出全部候选，
 # 选中的应用写入 .last-app 作为下次默认项。
 choose_app_and_launch() {
-    local apps=() i choice picked default_idx=1 saved nm mark
+    local apps=() i choice picked default_idx=1 saved nm mark rc
     while IFS= read -r line; do [ -n "${line}" ] && apps+=("${line}"); done < <(list_antigravity_apps)
     if [ "${#apps[@]}" -eq 0 ]; then
         echo -e "${C_RED}[错误] 没有找到 Antigravity.app / Antigravity IDE.app。${C_RESET}"
         echo "可把官方应用拖到本启动器（${0##*/}）图标上，或确认其已安装到 /Applications。"
+        pause
         return 1
     fi
     if [ "${#apps[@]}" -eq 1 ]; then
         launch_app "${apps[0]}"
-        return $?
+        rc=$?
+        pause
+        return ${rc}
     fi
-    saved="$(cat "${LAST_APP_FILE}" 2>/dev/null || true)"
-    echo ""
-    echo "检测到 ${#apps[@]} 个 Antigravity 应用，请选择要以透明代理模式启动的："
-    for ((i=0; i<${#apps[@]}; i++)); do
-        nm="$(macpatch_app_stem "${apps[$i]}" 2>/dev/null || basename "${apps[$i]}" .app)"
-        mark=""
-        if [ -n "${saved}" ] && [ "${saved%/}" == "${apps[$i]}" ]; then
-            mark="  ${C_YELLOW}（上次使用）${C_RESET}"
-            default_idx=$((i+1))
-        fi
-        echo -e "  ${C_BOLD}$((i+1))${C_RESET}) 启动 ${nm}${mark}"
+    while true; do
+        print_header
+        saved="$(cat "${LAST_APP_FILE}" 2>/dev/null || true)"
+        echo "检测到 ${#apps[@]} 个 Antigravity 应用，请选择要以透明代理模式启动的："
+        echo ""
+        default_idx=1
+        for ((i=0; i<${#apps[@]}; i++)); do
+            nm="$(macpatch_app_stem "${apps[$i]}" 2>/dev/null || basename "${apps[$i]}" .app)"
+            mark=""
+            if [ -n "${saved}" ] && [ "${saved%/}" == "${apps[$i]}" ]; then
+                mark="  ${C_YELLOW}（上次使用）${C_RESET}"
+                default_idx=$((i+1))
+            fi
+            echo -e "  ${C_BOLD}$((i+1))${C_RESET}) 启动 ${nm}${mark}"
+        done
+        echo -e "  ${C_BOLD}0${C_RESET}) 返回主菜单"
+        echo ""
+        read -r -p "请输入选项编号 [0-${#apps[@]}]（直接回车 = ${default_idx}）: " choice
+        [ -z "${choice}" ] && choice="${default_idx}"
+        case "${choice}" in
+            0|q|Q)
+                return 0 ;;
+            *)
+                if picked="$(pick_antigravity_app "${choice}" 2>/dev/null)" && [ -n "${picked}" ]; then
+                    echo "${picked}" > "${LAST_APP_FILE}"
+                    echo ""
+                    launch_app "${picked}"
+                    rc=$?
+                    pause
+                    return ${rc}
+                else
+                    echo "无效选项，请重新输入。"
+                    sleep 1
+                fi
+                ;;
+        esac
     done
-    echo -e "  ${C_BOLD}0${C_RESET}) 返回主菜单"
-    read -r -p "请输入选项编号 [0-${#apps[@]}]（直接回车 = ${default_idx}）: " choice
-    [ -z "${choice}" ] && choice="${default_idx}"
-    [ "${choice}" = "0" ] && return 0
-    picked="$(pick_antigravity_app "${choice}")" || { echo "无效选择，已返回主菜单。"; return 1; }
-    echo "${picked}" > "${LAST_APP_FILE}"
-    echo ""
-    launch_app "${picked}"
 }
 
 # 查找官方 Antigravity 原件：拖放/命令行 DIRECT_TARGET 优先；否则返回排序第一的原件
@@ -988,8 +1008,7 @@ while true; do
     read -r -p "请输入选项编号后回车: " choice
     case "${choice}" in
         1)
-            choose_app_and_launch
-            pause ;;
+            choose_app_and_launch ;;
         2)
             agy_menu ;;
         3)
