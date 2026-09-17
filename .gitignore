@@ -2,43 +2,12 @@
 [Tt]humbs.db
 *.DS_Store
 
-#Visual Studio files
-*.[Oo]bj
-*.user
-*.aps
-*.pch
-*.vspscc
-*.vssscc
-*_i.c
-*_p.c
-*.ncb
-*.suo
-*.tlb
-*.tlh
-*.bak
-*.[Cc]ache
-*.ilk
-*.log
-*.sbr
-*.sdf
-*.opensdf
-*.unsuccessfulbuild
-ipch/
-obj/
-[Ll]ib
-[Bb]in
-[Dd]ebug*/
-[Rr]elease*/
-Ankh.NoLoad
-*.VC.db
-.vs/
-
-#GCC files
+#Compiled object files
 *.o
 *.d
-*.res
-*.dll
 *.a
+*.so
+*.profraw
 
 #Visual Studio Code files
 .vscode/
@@ -52,16 +21,7 @@ log/
 *.zip
 *.7z
 
-build/
-build-x64/
-build-x86/
-build-tests/
-build-process-name-tests/
-build-codex-x64/
-build-compatibility-tests*/
-.codex-tools/
-antigravity-oauth-183232-evidence/*
-antigravity-oauth-ab-20260901-191347/
 # macOS 打包产物与本地临时文件
 dist/
 stub.command
+.last-app

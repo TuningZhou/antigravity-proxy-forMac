@@ -40,42 +40,6 @@ inline std::string ExtractBaseNameFromPathLike(std::string s) {
     return StripOuterQuotesCopy(std::move(s));
 }
 
-inline std::string ExtractExecutableTokenFromCommandLine(std::string commandLine) {
-    commandLine = StripOuterQuotesCopy(std::move(commandLine));
-    if (commandLine.empty()) return "";
-
-    // CreateProcess 的命令行可能是 `"C:\...\Antigravity IDE.exe" --flag`。
-    // 先保留引号内完整路径，避免把带空格的 exe 名截断成 `Antigravity`。
-    if (commandLine.front() == '"') {
-        const size_t closingQuote = commandLine.find('"', 1);
-        if (closingQuote != std::string::npos) {
-            return commandLine.substr(1, closingQuote - 1);
-        }
-    }
-
-    const std::string lowerCommandLine = ToLowerAsciiCopy(commandLine);
-    const size_t exePos = lowerCommandLine.find(".exe");
-    if (exePos != std::string::npos) {
-        return commandLine.substr(0, exePos + 4);
-    }
-
-    const size_t firstSpace = commandLine.find(' ');
-    if (firstSpace != std::string::npos) {
-        return commandLine.substr(0, firstSpace);
-    }
-    return commandLine;
-}
-
-inline std::string GetCreateProcessTargetBaseNameA(const char* applicationName, const char* commandLine) {
-    std::string target;
-    if (applicationName && *applicationName) {
-        target = applicationName;
-    } else if (commandLine && *commandLine) {
-        target = ExtractExecutableTokenFromCommandLine(commandLine);
-    }
-    target = ExtractBaseNameFromPathLike(std::move(target));
-    return target.empty() ? std::string("Unknown") : target;
-}
 
 inline bool IsLanguageServerProcessName(const std::string& processName) {
     const std::string lowerName = ToLowerAsciiCopy(processName);

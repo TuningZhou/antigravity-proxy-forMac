@@ -9,11 +9,6 @@
 #include "network/LocalTargetPolicy.hpp"
 
 int main() {
-#ifdef _WIN32
-    WSADATA data{};
-    assert(WSAStartup(MAKEWORD(2, 2), &data) == 0);
-#endif
-
     assert(Network::IsLoopbackHost("localhost"));
     assert(Network::IsLoopbackHost("LOCALHOST."));
     assert(Network::IsLoopbackHost("127.0.0.1"));
@@ -56,8 +51,5 @@ int main() {
     assert(!Network::IsLoopbackSockaddr(&unsupported, sizeof(unsupported)));
     assert(!Network::IsLoopbackSockaddr(nullptr, 0));
 
-#ifdef _WIN32
-    assert(WSACleanup() == 0);
-#endif
     return 0;
 }

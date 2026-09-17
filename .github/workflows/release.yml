@@ -1,4 +1,4 @@
-name: Release
+name: Release (macOS)
 
 on:
   push:
@@ -12,23 +12,17 @@ on:
         type: string
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  build:
-    name: Build ${{ matrix.arch }} (IDE + CLI)
-    # 固定到 Windows 2022，避免 windows-latest 迁移到 VS 2026 后找不到 VS 2022 生成器
-    runs-on: windows-2022
+  build-mac:
+    name: Build Universal2 (macOS)
+    runs-on: macos-14
     timeout-minutes: 30
-
-    strategy:
-      fail-fast: false
-      matrix:
-        arch: [x64, x86]
 
     outputs:
       release_tag: ${{ steps.prepare_version.outputs.release_tag }}
@@ -38,226 +32,112 @@ jobs:
     - name: 检出仓库
       uses: actions/checkout@v6
 
-    # 统一版本号与 tag，兼容 tag 触发与手动触发
     - name: 准备版本号
       id: prepare_version
-      shell: pwsh
+      shell: bash
       env:
         EVENT_NAME: ${{ github.event_name }}
         INPUT_VERSION: ${{ inputs.version }}
         REF_NAME: ${{ github.ref_name }}
       run: |
-        if ($env:EVENT_NAME -eq "workflow_dispatch") {
-          $rawVersion = $env:INPUT_VERSION
-          $normalized = $rawVersion.Trim()
-          if ($normalized.StartsWith("v", [System.StringComparison]::OrdinalIgnoreCase)) {
-            $normalized = $normalized.Substring(1)
-          }
-          $tag = "v$normalized"
-        } else {
-          $tag = $env:REF_NAME
-          $normalized = $tag
-          if ($normalized.StartsWith("v")) { $normalized = $normalized.Substring(1) }
-        }
-        if ($normalized -notmatch '^\d+\.\d+(?:\.\d+)?$') {
-          Write-Error "发布版本格式错误: $normalized（应为 1.2 或 1.2.3）"
+        if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+          rawVersion="$INPUT_VERSION"
+          normalized="${rawVersion#v}"
+          tag="v$normalized"
+        else
+          tag="$REF_NAME"
+          normalized="${tag#v}"
+        fi
+        if ! [[ "$normalized" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
+          echo "发布版本格式错误: $normalized（应为 1.2 或 1.2.3）" >&2
           exit 1
-        }
-        "release_tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-        "release_version=$normalized" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+        fi
+        echo "release_tag=$tag" >> "$GITHUB_OUTPUT"
+        echo "release_version=$normalized" >> "$GITHUB_OUTPUT"
 
-    # 将本次发布版本号同步到 build.ps1，确保产物内版本号与 tag 一致
-    - name: 同步版本号到 build.ps1
-      shell: pwsh
+    - name: 同步版本号到 VERSION
+      shell: bash
       env:
         RELEASE_VERSION: ${{ steps.prepare_version.outputs.release_version }}
       run: |
-        $ver = $env:RELEASE_VERSION
-        if ([string]::IsNullOrWhiteSpace($ver)) {
-          Write-Error "发布版本号为空，已终止 build.ps1 同步"
-          exit 1
-        }
+        echo "$RELEASE_VERSION" > VERSION
+        echo "已同步 VERSION: $RELEASE_VERSION"
 
-        $path = Join-Path $env:GITHUB_WORKSPACE "build.ps1"
-        if (-not (Test-Path $path)) {
-          Write-Error "未找到 build.ps1：$path"
-          exit 1
-        }
-
-        $content = Get-Content -Path $path -Raw -Encoding UTF8
-        $pattern = '(?m)^\s*\$Version\s*=\s*".*?"\s*$'
-        if (-not [regex]::IsMatch($content, $pattern)) {
-          Write-Error "未在 build.ps1 中找到 `$Version = \"...\"` 版本号行，已终止自动更新。"
-          exit 1
-        }
-
-        $replacement = ('$Version = "{0}"' -f $ver)
-        $newContent = [regex]::Replace($content, $pattern, $replacement, 1)
-        Set-Content -Path $path -Value $newContent -Encoding UTF8
-        Write-Host "已同步 build.ps1 版本号为：$ver"
-
-    # 每个架构只编译一次，共享代码同时生成 IDE 与 CLI 产物。
-    - name: 编译并运行回归测试
-      shell: pwsh
-      run: .\build.ps1 -Clean -Config Release -Arch ${{ matrix.arch }} -RunTests
-
-    # 复用本地打包脚本，生成互不混装的 IDE/CLI Release 资产。
-    - name: 打包 IDE/CLI 独立产物
-      id: package
-      shell: pwsh
-      env:
-        RELEASE_TAG: ${{ steps.prepare_version.outputs.release_tag }}
-        TARGET_ARCH: ${{ matrix.arch }}
-      run: |
-        $ErrorActionPreference = "Stop"
-        $packageDir = Join-Path $env:RUNNER_TEMP "release-packages"
-        .\scripts\package-release.ps1 `
-          -Version $env:RELEASE_TAG `
-          -Arch $env:TARGET_ARCH `
-          -OutputDir (Join-Path $env:GITHUB_WORKSPACE "output") `
-          -DestinationDir $packageDir | Out-Host
-
-        $ideZip = Join-Path $packageDir "antigravity-proxy-$($env:RELEASE_TAG)-ide-win-$($env:TARGET_ARCH).zip"
-        $cliZip = Join-Path $packageDir "antigravity-proxy-$($env:RELEASE_TAG)-cli-win-$($env:TARGET_ARCH).zip"
-        "ide_zip_path=$ideZip" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-        "cli_zip_path=$cliZip" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-
-    - name: 上传 IDE 打包文件
-      uses: actions/upload-artifact@v7
-      with:
-        name: release-asset-ide-${{ matrix.arch }}
-        path: ${{ steps.package.outputs.ide_zip_path }}
-        if-no-files-found: error
-        compression-level: 0
-        retention-days: 1
-
-    - name: 上传 CLI 打包文件
-      uses: actions/upload-artifact@v7
-      with:
-        name: release-asset-cli-${{ matrix.arch }}
-        path: ${{ steps.package.outputs.cli_zip_path }}
-        if-no-files-found: error
-        compression-level: 0
-        retention-days: 1
-
-  build-mac:
-    name: Build macOS universal2
-    runs-on: macos-14
-    timeout-minutes: 30
-
-    steps:
-    - name: 检出仓库
-      uses: actions/checkout@v6
-
-    # 与 Windows build 作业相同的版本号规则（bash 版）
-    - name: 准备版本号
-      id: prepare_version
-      shell: bash
-      env:
-        EVENT_NAME: ${{ github.event_name }}
-        INPUT_VERSION: ${{ inputs.version }}
-        REF_NAME: ${{ github.ref_name }}
-      run: |
-        set -euo pipefail
-        if [ "${EVENT_NAME}" = "workflow_dispatch" ]; then
-          raw="${INPUT_VERSION}"
-        else
-          raw="${REF_NAME}"
-        fi
-        version="${raw#v}"
-        if ! [[ "${version}" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
-          echo "发布版本格式错误: ${version}（应为 1.2 或 1.2.3）" >&2
-          exit 1
-        fi
-        echo "release_version=${version}" >> "${GITHUB_OUTPUT}"
-        echo "release_tag=v${version}" >> "${GITHUB_OUTPUT}"
-
-    # package-mac.sh 内部会执行 build.sh Release（含 ctest 回归测试）
     - name: 编译、测试并打包 Universal2 预编译包
       shell: bash
-      run: ./scripts/package-mac.sh --version "${{ steps.prepare_version.outputs.release_version }}" --arch universal
+      env:
+        RELEASE_VERSION: ${{ steps.prepare_version.outputs.release_version }}
+        RELEASE_TAG: ${{ steps.prepare_version.outputs.release_tag }}
+      run: |
+        ./scripts/package-mac.sh --version "${RELEASE_VERSION}" --arch universal
+        cd dist
+        shasum -a 256 *.zip > "antigravity-proxy-${RELEASE_TAG}-mac-universal2.zip.sha256"
 
-    - name: 上传 macOS 预编译包
+    - name: 上传构建产物
       uses: actions/upload-artifact@v7
       with:
-        name: release-asset-mac-universal2
-        path: dist/antigravity-proxy-v*-mac-universal2.zip
+        name: release-assets-mac
+        path: |
+          dist/*.zip
+          dist/*.sha256
         if-no-files-found: error
-        compression-level: 0
         retention-days: 1
 
   release:
-    name: Publish Release
+    name: 发布 GitHub Release
+    needs: build-mac
     runs-on: ubuntu-latest
-    needs: [build, build-mac]
-    timeout-minutes: 20
     permissions:
       contents: write
 
     steps:
-    # 检出仓库以获取 git 历史记录（生成发布说明需要）
     - name: 检出仓库
       uses: actions/checkout@v6
       with:
         fetch-depth: 0
 
-    # 基于 git 提交历史生成结构化发布说明
     - name: 生成发布说明
       id: changelog
       shell: bash
       run: |
         set -euo pipefail
-        CURRENT_TAG="${{ needs.build.outputs.release_tag }}"
+        CURRENT_TAG="${{ needs.build-mac.outputs.release_tag }}"
         
-        # 获取上一个 tag（排除当前 tag）
         PREV_TAG=$(git tag --sort=-version:refname | grep -E '^v[0-9]' | grep -v "^${CURRENT_TAG}$" | head -n 1 || true)
         
         if [ -z "${PREV_TAG:-}" ]; then
-          echo "首次发布，获取所有提交记录"
           COMMIT_RANGE="HEAD"
         else
-          echo "从 $PREV_TAG 到 $CURRENT_TAG 的提交"
           COMMIT_RANGE="${PREV_TAG}..HEAD"
         fi
         
         trim() {
           local s="$1"
           s="${s//$'\r'/}"
-          # 使用 sed 去除首尾空白（更兼容，避免 extglob 解析问题）
           s="$(printf '%s' "$s" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
           printf '%s' "$s"
         }
         
-        # 去掉行内的 ```fence（常见于复制粘贴时把 commit 信息包在 ``` 里）
         strip_inline_fence() {
           local s
           local fence='```'
           s="$(trim "$1")"
-        
-          # leading fence: ```lang? <content?>
           if [[ "$s" == "$fence"* ]]; then
             s="${s#"$fence"}"
             s="$(trim "$s")"
-        
-            # 如果只有语言标记（如 ```text），视为纯包裹行，直接丢弃
             if [[ "$s" =~ ^[[:alnum:]_-]+$ ]]; then
               s=""
-            # 若形如 "lang <content>"，去掉 lang，保留 content
             elif [[ "$s" =~ ^[[:alnum:]_-]+[[:space:]]+(.*)$ ]]; then
               s="$(trim "${BASH_REMATCH[1]}")"
             fi
           fi
-        
-          # trailing fence: ... ```
           if [[ "$s" == *"$fence" ]]; then
             s="${s%"$fence"}"
             s="$(trim "$s")"
           fi
-        
           printf '%s' "$s"
         }
         
-        # 仅转义反引号，避免 ``` 触发 code fence 或 `...` 触发 inline code 破坏列表结构
         md_escape_backticks() {
           local s="$1"
           local tick='`'
@@ -269,51 +149,37 @@ jobs:
           local body="$1"
           body="$(trim "$body")"
           [ -z "$body" ] && return 0
-        
           local out=""
           local line=""
           while IFS= read -r line; do
             line="$(trim "$line")"
             [ -z "$line" ] && continue
-        
-            # 去掉单行 fence，避免破坏 Markdown（同时也兼容 AI 输出里多余的 ``` 包裹）
-            if [[ "$line" =~ ^\`\`\` ]]; then
-              continue
-            fi
-        
-            # 去掉常见列表前缀（- / * / + / 1.）
+            if [[ "$line" =~ ^\`\`\` ]]; then continue; fi
             line="$(printf '%s' "$line" | sed -E 's/^([-*+]|[0-9]+\.)[[:space:]]+//')"
             line="$(trim "$line")"
             [ -z "$line" ] && continue
-        
             line="$(md_escape_backticks "$line")"
             out+="  - ${line}"$'\n'
           done <<< "$body"
-        
           out="${out%$'\n'}"
           [ -n "$out" ] && printf '%s' "$out"
         }
 
-        # Conventional Commits 正则：放入变量中，避免 bash 在 [[ ... =~ ... ]] 中将 ()/! 误解析为条件语法
         CC_HEADER_RE='^[a-zA-Z]+(\([^)]+\))?(!)?:'
         CC_FULL_RE='^([a-zA-Z]+)(\(([^)]+)\))?(!)?:[[:space:]]*(.+)$'
         
-        # 创建临时文件存储各类型提交
         TMPDIR=$(mktemp -d)
         for type in feat fix perf refactor docs chore style test build ci other; do
           : > "$TMPDIR/$type.txt"
         done
         
-        # 获取提交列表：sha + subject + body（一次性输出，避免循环中重复调用 git log）
         while IFS= read -r -d $'\x1e' record; do
           record="${record%$'\n'}"
           [ -z "$record" ] && continue
-        
           sha="${record%%$'\n'*}"
           rest="${record#*$'\n'}"
           subject_raw="${rest%%$'\n'*}"
           body_raw="${rest#*$'\n'}"
-        
           sha="$(trim "$sha")"
           sha_suffix=""
           if [ -n "$sha" ]; then
@@ -321,59 +187,44 @@ jobs:
           fi
           subject_raw="$(trim "$subject_raw")"
           body_raw="${body_raw//$'\r'/}"
-        
-          # 规范化 subject，去掉 ``` 包裹/前缀，避免误分类到 other
           subject="$(strip_inline_fence "$subject_raw")"
           body="$body_raw"
-        
-          # 若 subject 为空或不像 Conventional Commits，尝试从 body 提取第一条符合格式的行作为 subject
-          promoted_subject=""
+          
           if [ -z "$subject" ] || ! [[ "$subject" =~ $CC_HEADER_RE ]]; then
             new_body=""
+            promoted_subject=""
             while IFS= read -r line; do
               line="$(trim "$line")"
               [ -z "$line" ] && continue
-        
-              if [[ "$line" =~ ^\`\`\` ]]; then
-                continue
-              fi
-        
+              if [[ "$line" =~ ^\`\`\` ]]; then continue; fi
               if [ -z "$promoted_subject" ] && [[ "$line" =~ $CC_HEADER_RE ]]; then
                 promoted_subject="$(strip_inline_fence "$line")"
                 continue
               fi
-        
               new_body+="$line"$'\n'
             done <<< "$body_raw"
             body="$(trim "$new_body")"
-        
             if [ -n "$promoted_subject" ]; then
               subject="$promoted_subject"
             fi
           fi
-        
           subject="$(trim "$subject")"
-        
-          # 解析 Conventional Commits：type(scope)!: description
+          
           if [[ "$subject" =~ $CC_FULL_RE ]]; then
             TYPE="${BASH_REMATCH[1],,}"
             SCOPE="$(trim "${BASH_REMATCH[3]}")"
             DESC="$(trim "${BASH_REMATCH[5]}")"
-        
             scope_safe="$(md_escape_backticks "$SCOPE")"
             desc_safe="$(md_escape_backticks "$DESC")"
-        
             if [ -n "$SCOPE" ] && [ "$SCOPE" != "$TYPE" ]; then
               ENTRY="- **${scope_safe}**: ${desc_safe}${sha_suffix}"
             else
               ENTRY="- ${desc_safe}${sha_suffix}"
             fi
-        
             body_out="$(format_body_as_sublist "$body" || true)"
             if [ -n "${body_out:-}" ]; then
               ENTRY+=$'\n'"$body_out"
             fi
-        
             case "$TYPE" in
               feat)     printf '%s\n' "$ENTRY" >> "$TMPDIR/feat.txt" ;;
               fix)      printf '%s\n' "$ENTRY" >> "$TMPDIR/fix.txt" ;;
@@ -388,24 +239,19 @@ jobs:
               *)        printf '%s\n' "$ENTRY" >> "$TMPDIR/other.txt" ;;
             esac
           else
-            # 非标准格式提交：也输出 body，并做好 ```/` 处理，避免破坏 Markdown
             subject_other="$(trim "$(strip_inline_fence "$subject_raw")")"
             subject_other="$(md_escape_backticks "$subject_other")"
             [ -z "$subject_other" ] && subject_other="(no subject)"
-        
             ENTRY="- ${subject_other}${sha_suffix}"
             body_out="$(format_body_as_sublist "$body_raw" || true)"
             if [ -n "${body_out:-}" ]; then
               ENTRY+=$'\n'"$body_out"
             fi
-        
             printf '%s\n' "$ENTRY" >> "$TMPDIR/other.txt"
           fi
         done < <(git log "$COMMIT_RANGE" --no-merges --pretty=format:'%h%n%s%n%b%n%x1e' 2>/dev/null)
         
-        # 构建最终的发布说明
         CHANGELOG=""
-        
         add_section() {
           local file="$1"
           local title="$2"
@@ -426,15 +272,10 @@ jobs:
         add_section "$TMPDIR/style.txt"    "## 💄 代码风格 (Style)"
         add_section "$TMPDIR/test.txt"     "## ✅ 测试 (Tests)"
         add_section "$TMPDIR/other.txt"    "## 📋 其他更新 (Other)"
-        
-        # 清理临时目录
         rm -rf "$TMPDIR"
         
-        # 如果没有任何提交记录
         [ -z "$CHANGELOG" ] && CHANGELOG="暂无更新记录"
         
-        # 使用 heredoc 写入多行输出（GitHub Actions 推荐方式）
-        # 使用随机分隔符，避免 changelog 内容里恰好出现 EOF 导致截断
         DELIM="CHANGELOG_$(date +%s%N)"
         {
           printf 'body<<%s\n' "$DELIM"
@@ -445,68 +286,47 @@ jobs:
     - name: 下载打包文件
       uses: actions/download-artifact@v8
       with:
+        name: release-assets-mac
         path: release-assets
-        pattern: release-asset-*
-        merge-multiple: true
 
-    # 创建/更新 Release，上传打包产物并使用生成的发布说明
     - name: 发布 GitHub Release
       uses: softprops/action-gh-release@v3
       with:
-        tag_name: ${{ needs.build.outputs.release_tag }}
-        name: ${{ needs.build.outputs.release_tag }}
+        tag_name: ${{ needs.build-mac.outputs.release_tag }}
+        name: ${{ needs.build-mac.outputs.release_tag }}
         target_commitish: ${{ github.sha }}
-        files: release-assets/*.zip
+        files: |
+          release-assets/*.zip
+          release-assets/*.sha256
         fail_on_unmatched_files: true
         body: ${{ steps.changelog.outputs.body }}
 
-    # 将版本号同步回 build.ps1 并提交到仓库
     - name: 同步版本号到仓库
       shell: bash
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
         set -euo pipefail
-        
-        VERSION="${{ needs.build.outputs.release_version }}"
-        TAG="${{ needs.build.outputs.release_tag }}"
+        VERSION="${{ needs.build-mac.outputs.release_version }}"
+        TAG="${{ needs.build-mac.outputs.release_tag }}"
         
         if [ -z "$VERSION" ]; then
           echo "::warning::版本号为空，跳过同步"
           exit 0
         fi
         
-        echo "准备同步版本号: $VERSION"
-        
-        # 配置 git 用户身份
         git config user.name "github-actions[bot]"
         git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
         
-        # 获取默认分支名称
-        DEFAULT_BRANCH=$(git remote show origin | sed -n '/HEAD branch/s/.*: //p')
-        echo "默认分支: $DEFAULT_BRANCH"
+        DEFAULT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+        git fetch origin "$DEFAULT_BRANCH" || true
         
-        # 切换到默认分支并拉取最新代码
-        git fetch origin "$DEFAULT_BRANCH"
-        git checkout "$DEFAULT_BRANCH"
-        git pull origin "$DEFAULT_BRANCH"
-        
-        # 更新 build.ps1 中的版本号
-        if [ -f "build.ps1" ]; then
-          # 使用 sed 替换版本号行
-          sed -i -E "s/^\s*\\\$Version\s*=\s*\"[^\"]*\"/\$Version = \"$VERSION\"/" build.ps1
-          
-          # 检查是否有实际更改
-          if git diff --quiet build.ps1; then
-            echo "版本号已是最新 ($VERSION)，无需更新"
-            exit 0
-          fi
-          
-          echo "版本号已更新为: $VERSION"
-          git add build.ps1
-          git commit -m "chore: 同步版本号到 $TAG [skip ci]"
-          git push origin "$DEFAULT_BRANCH"
-          echo "✅ 版本号已同步到仓库"
-        else
-          echo "::warning::未找到 build.ps1 文件"
+        echo "$VERSION" > VERSION
+        if git diff --quiet VERSION; then
+          echo "VERSION 已是最新 ($VERSION)，无需更新"
+          exit 0
         fi
+        
+        git add VERSION
+        git commit -m "chore: 同步版本号到 $TAG [skip ci]"
+        git push origin "$DEFAULT_BRANCH"

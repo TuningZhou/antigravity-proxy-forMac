@@ -12,7 +12,7 @@ set -euo pipefail
 #     详见包内“使用说明.txt”）
 #
 # 用法：
-#   ./scripts/package-mac.sh                         # 本机当前架构，版本号取 build.ps1
+#   ./scripts/package-mac.sh                         # 本机当前架构，版本号取 VERSION 文件
 #   ARCHS="arm64;x86_64" ./scripts/package-mac.sh    # Universal 2 通用二进制
 #   ./scripts/package-mac.sh --version 2.4           # 指定版本号
 #   ./scripts/package-mac.sh --arch arm64            # 指定单一架构
@@ -43,9 +43,13 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-# 版本号默认取 build.ps1（与 Windows 端保持同一版本源）
+# 版本号默认取 VERSION 文件
 if [ -z "${VERSION}" ]; then
-    VERSION="$(sed -nE 's/^[[:space:]]*\$Version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' build.ps1 | head -n 1)"
+    if [ -f "${PROJECT_ROOT}/VERSION" ]; then
+        VERSION="$(tr -d ' \r\n' < "${PROJECT_ROOT}/VERSION")"
+    else
+        VERSION="2.4"
+    fi
 fi
 VERSION="${VERSION#v}"
 if ! [[ "${VERSION}" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then

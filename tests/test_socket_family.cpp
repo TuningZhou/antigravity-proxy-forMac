@@ -9,11 +9,6 @@
 #include "network/SocketFamily.hpp"
 
 int main() {
-#ifdef _WIN32
-    WSADATA data{};
-    assert(WSAStartup(MAKEWORD(2, 2), &data) == 0);
-#endif
-
     socket_t socket6 = socket(AF_INET6, SOCK_STREAM, IPPROTO_TCP);
     assert(socket6 != INVALID_SOCKET);
 
@@ -24,17 +19,6 @@ int main() {
            result == Network::DualStackResult::AlreadyEnabled);
     assert(error == 0);
 
-#ifdef _WIN32
-    DWORD v6Only = 1;
-    int optionLength = static_cast<int>(sizeof(v6Only));
-    assert(getsockopt(
-               socket6,
-               IPPROTO_IPV6,
-               IPV6_V6ONLY,
-               reinterpret_cast<char*>(&v6Only),
-               &optionLength) == 0);
-    assert(v6Only == 0);
-#else
     int v6Only = 1;
     socklen_t optionLength = sizeof(v6Only);
     assert(getsockopt(
@@ -44,7 +28,6 @@ int main() {
                &v6Only,
                &optionLength) == 0);
     assert(v6Only == 0);
-#endif
 
     sockaddr_in6 mapped{};
     mapped.sin6_family = AF_INET6;
@@ -60,8 +43,5 @@ int main() {
     assert(!Network::IsIpv4MappedAddress(native));
 
     closesocket(socket6);
-#ifdef _WIN32
-    WSACleanup();
-#endif
     return 0;
 }

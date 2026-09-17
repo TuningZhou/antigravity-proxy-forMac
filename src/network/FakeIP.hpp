@@ -9,12 +9,10 @@
 #include <cstdint>
 #include <chrono>
 
-#ifndef _WIN32
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
-#endif
 
 #include "../core/Config.hpp"
 #include "../core/Logger.hpp"
@@ -22,12 +20,8 @@
 namespace Network {
 
     inline uint64_t PlatformGetTickCount64() {
-#ifdef _WIN32
-        return GetTickCount64();
-#else
         using namespace std::chrono;
         return duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
-#endif
     }
     
     // FakeIP 管理器 (Ring Buffer 策略)
@@ -47,8 +41,6 @@ namespace Network {
         static constexpr uint32_t kSharedMagic = 0x4650494D; // "FIPM"
         static constexpr uint32_t kSharedCapacity = 4096;
         static constexpr size_t kSharedDomainMax = 255;
-        static constexpr const char* kSharedMapName = "Local\\AntigravityProxy_FakeIP_Map";
-        static constexpr const char* kSharedMutexName = "Local\\AntigravityProxy_FakeIP_Mutex";
 
         struct SharedEntry {
             uint32_t ip;       // host order
@@ -64,77 +56,29 @@ namespace Network {
             SharedEntry entries[kSharedCapacity];
         };
 
-#ifdef _WIN32
-        HANDLE m_sharedMap = NULL;
-        HANDLE m_sharedMutex = NULL;
-#else
         int m_sharedFd = -1;
-#endif
         SharedTable* m_shared = nullptr;
         std::once_flag m_sharedOnce;
 
         bool LockShared() {
-#ifdef _WIN32
-            if (!m_sharedMutex) return false;
-            DWORD wait = WaitForSingleObject(m_sharedMutex, INFINITE);
-            return (wait == WAIT_OBJECT_0 || wait == WAIT_ABANDONED);
-#else
             if (m_sharedFd < 0) return false;
             struct flock fl{};
             fl.l_type = F_WRLCK;
             fl.l_whence = SEEK_SET;
             return fcntl(m_sharedFd, F_SETLKW, &fl) == 0;
-#endif
         }
 
         void UnlockShared() {
-#ifdef _WIN32
-            if (m_sharedMutex) ReleaseMutex(m_sharedMutex);
-#else
             if (m_sharedFd >= 0) {
                 struct flock fl{};
                 fl.l_type = F_UNLCK;
                 fl.l_whence = SEEK_SET;
                 fcntl(m_sharedFd, F_SETLK, &fl);
             }
-#endif
         }
 
         void EnsureSharedInitialized() {
             std::call_once(m_sharedOnce, [this]() {
-#ifdef _WIN32
-                m_sharedMutex = CreateMutexA(NULL, FALSE, kSharedMutexName);
-                const bool locked = LockShared();
-
-                m_sharedMap = CreateFileMappingA(
-                    INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, 0,
-                    static_cast<DWORD>(sizeof(SharedTable)), kSharedMapName
-                );
-                if (!m_sharedMap) {
-                    if (locked) UnlockShared();
-                    return;
-                }
-                DWORD mapErr = GetLastError();
-                m_shared = (SharedTable*)MapViewOfFile(m_sharedMap, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(SharedTable));
-                if (!m_shared) {
-                    CloseHandle(m_sharedMap);
-                    m_sharedMap = NULL;
-                    if (locked) UnlockShared();
-                    return;
-                }
-
-                const bool needInit = (mapErr != ERROR_ALREADY_EXISTS) ||
-                                      (m_shared->magic != kSharedMagic) ||
-                                      (m_shared->capacity != kSharedCapacity);
-                if (needInit) {
-                    std::memset(m_shared, 0, sizeof(SharedTable));
-                    m_shared->magic = kSharedMagic;
-                    m_shared->capacity = kSharedCapacity;
-                    m_shared->cursor = 0;
-                }
-
-                if (locked) UnlockShared();
-#else
                 const char* mapPath = "/tmp/antigravity_proxy_fakeip.map";
                 m_sharedFd = open(mapPath, O_RDWR | O_CREAT, 0666);
                 if (m_sharedFd < 0) return;
@@ -168,7 +112,6 @@ namespace Network {
                     m_shared->cursor = 0;
                 }
                 if (locked) UnlockShared();
-#endif
             });
         }
 

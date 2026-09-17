@@ -23,17 +23,6 @@ inline DualStackResult EnsureIpv6DualStack(socket_t socket, int addressFamily, i
 
     int v6Only = 1;
     socklen_t optionLength = static_cast<socklen_t>(sizeof(v6Only));
-#ifdef _WIN32
-    if (getsockopt(
-            socket,
-            IPPROTO_IPV6,
-            IPV6_V6ONLY,
-            reinterpret_cast<char*>(&v6Only),
-            reinterpret_cast<int*>(&optionLength)) == SOCKET_ERROR) {
-        if (errorCode) *errorCode = WSAGetLastError();
-        return DualStackResult::Failed;
-    }
-#else
     if (getsockopt(
             socket,
             IPPROTO_IPV6,
@@ -43,21 +32,9 @@ inline DualStackResult EnsureIpv6DualStack(socket_t socket, int addressFamily, i
         if (errorCode) *errorCode = WSAGetLastError();
         return DualStackResult::Failed;
     }
-#endif
     if (v6Only == 0) return DualStackResult::AlreadyEnabled;
 
     const int disabled = 0;
-#ifdef _WIN32
-    if (setsockopt(
-            socket,
-            IPPROTO_IPV6,
-            IPV6_V6ONLY,
-            reinterpret_cast<const char*>(&disabled),
-            static_cast<int>(sizeof(disabled))) == SOCKET_ERROR) {
-        if (errorCode) *errorCode = WSAGetLastError();
-        return DualStackResult::Failed;
-    }
-#else
     if (setsockopt(
             socket,
             IPPROTO_IPV6,
@@ -67,7 +44,6 @@ inline DualStackResult EnsureIpv6DualStack(socket_t socket, int addressFamily, i
         if (errorCode) *errorCode = WSAGetLastError();
         return DualStackResult::Failed;
     }
-#endif
     return DualStackResult::Enabled;
 }
 

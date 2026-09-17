@@ -610,44 +610,14 @@ namespace Core {
             return s;
         }
 
-        // 判断路径是否为绝对路径（支持 POSIX 根路径、Windows 盘符或 UNC 路径）
+        // 判断路径是否为绝对路径（POSIX 根路径）
         static bool IsAbsolutePath(const std::string& path) {
             if (path.empty()) return false;
-            if (path[0] == '/') return true;
-            if (path.size() >= 2 && std::isalpha(static_cast<unsigned char>(path[0])) && path[1] == ':') {
-                return true;
-            }
-            if (path.size() >= 2 &&
-                ((path[0] == '\\' && path[1] == '\\') || (path[0] == '/' && path[1] == '/'))) {
-                return true;
-            }
-            return false;
+            return path[0] == '/';
         }
 
-        // 获取当前 DLL/动态库所在目录（用于定位与库同目录的配置文件）
+        // 获取当前动态库所在目录（用于定位与库同目录的配置文件）
         static std::string GetModuleDirectory() {
-#ifdef _WIN32
-            char modulePath[MAX_PATH] = {0};
-            HMODULE hModule = NULL;
-            if (!GetModuleHandleExA(
-                GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-                reinterpret_cast<LPCSTR>(&GetModuleDirectory),
-                &hModule
-            )) {
-                return "";
-            }
-            DWORD len = GetModuleFileNameA(hModule, modulePath, MAX_PATH);
-            if (len == 0 || len >= MAX_PATH) {
-                return "";
-            }
-            for (int i = static_cast<int>(len) - 1; i >= 0; --i) {
-                if (modulePath[i] == '\\' || modulePath[i] == '/') {
-                    modulePath[i] = '\0';
-                    break;
-                }
-            }
-            return std::string(modulePath);
-#else
             Dl_info info{};
             if (dladdr(reinterpret_cast<const void*>(&GetModuleDirectory), &info) && info.dli_fname) {
                 std::string p(info.dli_fname);
@@ -657,7 +627,6 @@ namespace Core {
                 }
             }
             return "";
-#endif
         }
 
     public:
@@ -736,19 +705,13 @@ namespace Core {
                 } else {
                     std::string dllDir = GetModuleDirectory();
                     if (!dllDir.empty()) {
-#ifdef _WIN32
-                        candidates.push_back(dllDir + "\\" + path);
-#else
                         candidates.push_back(dllDir + "/" + path);
-#endif
                     }
-#ifndef _WIN32
                     const char* home = getenv("HOME");
                     if (home && *home) {
                         candidates.push_back(std::string(home) + "/.config/antigravity-proxy/" + path);
                         candidates.push_back(std::string(home) + "/.antigravity-proxy/" + path);
                     }
-#endif
                     candidates.push_back(path);
                 }
 
