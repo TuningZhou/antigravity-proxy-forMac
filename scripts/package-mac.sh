@@ -1185,7 +1185,7 @@ language_server 启动时还会出现“已绕过 Seatbelt/sandbox-exec”的提
    ~/.local/bin/antigravity-proxy
    ~/.config/antigravity-proxy/
 
-项目主页：https://github.com/yuaotian/antigravity-proxy
+项目主页：https://github.com/TuningZhou/antigravity-proxy-forMac
 TXT_EOF
 
 # ---------------------------------------------------------------- 打包 zip --

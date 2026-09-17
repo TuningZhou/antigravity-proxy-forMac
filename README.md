@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/yuaotian/antigravity-proxy/actions"><img src="https://github.com/yuaotian/antigravity-proxy/actions/workflows/build.yml/badge.svg" alt="Build Status"/></a>
+  <a href="https://github.com/TuningZhou/antigravity-proxy-forMac/actions"><img src="https://github.com/TuningZhou/antigravity-proxy-forMac/actions/workflows/build.yml/badge.svg" alt="Build Status"/></a>
   <a href="LICENSE.txt"><img src="https://img.shields.io/badge/license-BSD--2--Clause-blue.svg" alt="License"/></a>
   <img src="https://img.shields.io/badge/platform-macOS%20(Apple%20Silicon%20%7C%20Intel)-lightgrey.svg" alt="Platform"/>
   <img src="https://img.shields.io/badge/C%2B%2B-17-00599C.svg" alt="C++17"/>
@@ -22,7 +22,7 @@
 > 
 > 📖 **macOS 专有文档导航**：
 > - 想要阅读最全面、包含各类实机避坑与底层探究的详尽指南？欢迎阅读 👉 [**macOS 使用与测试完整指南 (README_MAC.md)**](README_MAC.md)
-> - Windows 版本请切换至 👉 [**main 分支**](https://github.com/yuaotian/antigravity-proxy/tree/main)
+> - Windows 版本请切换至 👉 [**main 分支**](https://github.com/TuningZhou/antigravity-proxy-forMac/tree/main)
 
 本项目已全面支持 macOS 操作系统（兼容 Apple Silicon M1/M2/M3/M4 ARM64 与 Intel x86_64 架构），实现了与 Windows 端一致的**透明代理、FakeIP 域名映射、路由分流规则、子进程继承传播**等全部核心功能。
 
@@ -109,7 +109,7 @@ macOS 端完全采用 Apple 官方规范的 **Dyld 符号重定向 (Dyld Interpo
 
 #### 方式 A：下载预编译包（推荐普通用户，免编译、免装 Homebrew）
 
-1. 打开项目的 [Releases 页面](https://github.com/yuaotian/antigravity-proxy/releases)，下载最新版的
+1. 打开项目的 [Releases 页面](https://github.com/TuningZhou/antigravity-proxy-forMac/releases)，下载最新版的
    **`antigravity-proxy-vX.X-mac-universal2.zip`**（一个包同时支持 Apple Silicon 与 Intel）。
 2. 在"访达"里双击 zip 解压，得到 `Antigravity-Proxy-macOS` 文件夹。**建议移到
    `~/Applications`（用户"应用程序"目录，没有可自行新建）；不要放在桌面/文稿/下载**——

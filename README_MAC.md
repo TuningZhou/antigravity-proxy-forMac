@@ -84,7 +84,7 @@ macOS 端完全采用 Apple 官方规范的 **Dyld 符号重定向 (Dyld Interpo
 
 #### 方式 A：下载预编译包（推荐普通用户，免编译、免装 Homebrew）
 
-1. 打开项目的 [Releases 页面](https://github.com/yuaotian/antigravity-proxy/releases)，下载最新版的
+1. 打开项目的 [Releases 页面](https://github.com/TuningZhou/antigravity-proxy-forMac/releases)，下载最新版的
    **`antigravity-proxy-vX.X-mac-universal2.zip`**（一个包同时支持 Apple Silicon 与 Intel）。
 2. 在"访达"里双击 zip 解压，得到 `Antigravity-Proxy-macOS` 文件夹。**建议移到
    `~/Applications`（用户"应用程序"目录，没有可自行新建）；不要放在桌面/文稿/下载**——
