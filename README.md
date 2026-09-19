@@ -231,13 +231,65 @@ Release 按架构和运行目标提供四个独立压缩包，下载时只选实
 
 ### Step 3: 部署到 Antigravity / Deploy to Antigravity
 
-桌面端只复制 `ide/` 内的文件到 **Antigravity 主程序目录**（与 `Antigravity.exe` 同级）。
+> 💡 **请先确认你要代理的是哪种使用形态**：
+> - **Antigravity 桌面端 (IDE)**：带窗口的图形界面编辑器，主程序为 `Antigravity.exe`。请看 **【3.1 桌面端部署】**。
+> - **Antigravity CLI (`agy`)**：在命令行终端中运行 `agy` 使用的工具，主程序为 `agy.exe`。请看 **【3.2 CLI 小白使用指南】**。
+> - ⚠️ **两套目录的文件绝对不要混装！** 桌面端不需要 `dbghelp.dll`；CLI 端不需要且**绝不能**放 `version.dll`。
 
-如果使用 **Antigravity CLI**，只复制 `cli/` 内的文件到 `agy.exe` 同级目录。`dbghelp.dll` 会在导出函数首次调用时加载唯一名称的 `antigravity_proxy.dll`，避开系统 `version.dll` 同名冲突。
+#### 3.1 桌面端（Antigravity IDE）部署
 
-> `ide/` 与 `cli/` 不要混合复制；桌面端不需要 `dbghelp.dll`。
+桌面端只复制 `ide/` 内的文件（`version.dll` 与 `config.json`）到 **Antigravity 主程序目录**（与 `Antigravity.exe` 同级）。
 
 > `version.dll` 与 `config.json` 必须来自同一次构建且架构一致。当前版本默认对宿主进程启用全量网络 Hook；启动日志应出现 `使用全量模式`，随后再以 OAuth 回调和业务请求日志做功能验收。
+
+#### 3.2 命令行（Antigravity CLI / `agy`）小白极简使用指南
+
+如果你使用的是 **Antigravity CLI**（在终端输入 `agy` 交互），请按照以下傻瓜式步骤配置代理：
+
+##### 1. 一键打开 `agy.exe` 所在目录
+很多小白不知道 `agy.exe` 装在哪里，其实无需手动寻找深层目录：
+- **最简单的办法**：按下键盘上的快捷键 <kbd>Win</kbd> + <kbd>R</kbd>，在弹出的“运行”窗口中直接粘贴：
+  ```text
+  %LOCALAPPDATA%\agy\bin
+  ```
+  点击“确定”或按回车，系统就会直接打开 `agy.exe` 所在的文件夹！
+- *(备用方法：在 PowerShell 终端中执行 `explorer (Split-Path (Get-Command agy).Source)` 也可以瞬间弹开该目录)*
+
+##### 2. 复制 3 个 CLI 代理文件
+解压下载好的 CLI 压缩包（如 `antigravity-proxy-vX-cli-win-x64.zip`）中的 `cli/` 目录（或编译输出的 `output/cli/`），将其中的 **3 个文件**全部复制粘贴到刚才打开的 `agy.exe` 文件夹中：
+1. `dbghelp.dll`（入口引导）
+2. `antigravity_proxy.dll`（代理核心，**必须与 dbghelp.dll 放在一起**）
+3. `config.json`（配置文件）
+
+> ⚠️ **新手避坑关键提示**：
+> 1. **千万不要复制桌面端的 `version.dll`！** CLI 必须通过 `dbghelp.dll` 引导加载 `antigravity_proxy.dll`。如果该目录下之前残留有 `version.dll`，请直接删除！
+> 2. `dbghelp.dll` 与 `antigravity_proxy.dll` **缺一不可**，必须同时存在。
+
+##### 3. 检查代理端口（默认已配置为 10808）
+用记事本打开同目录下的 `config.json`，检查 `proxy` 设置：
+```json
+"proxy": {
+    "host": "127.0.0.1",
+    "port": 10808,
+    "type": "socks5"
+}
+```
+- 如果你使用的是 **v2rayN / Xray**：默认 SOCKS5 端口就是 `10808`，无需修改任何内容，开箱即用！
+- 如果你使用的是 **Clash / Mihomo**：请将 `10808` 改为你代理软件的混合端口（通常为 `7890`）。
+
+##### 4. 运行与验证
+打开你的终端（PowerShell 或 CMD），直接运行：
+```powershell
+agy
+```
+- **验证成功**：所有的请求（包括 Google OAuth 登录、模型调用、Token 交换）都会自动走 `10808` 代理通道，彻底解决 `token exchange failed: dial tcp ... connectex` 连接超时报错！
+- **如何查看代理日志？**
+  打开 `agy.exe` 所在目录下的 `logs/proxy-YYYYMMDD.log` 文件，如果看到：
+  ```text
+  [信息] 当前进程 agy.exe 使用全量模式：安装网络与进程创建 Hook
+  [信息] 所有 API Hook 安装成功 (Phase 1-3)
+  ```
+  即表示代理已成功接管 CLI 的全部流量。
 
 #### Antigravity 2.0 注意事项
 

@@ -221,17 +221,71 @@ curl -x http://127.0.0.1:7890 https://www.google.com -I
 ### Step 2: Get the Files
 
 You need these files:
-- `version.dll`
-- `dbghelp.dll` (Antigravity CLI only)
-- `config.json`
+Release packages provide four separate zips by architecture and target:
+- `antigravity-proxy-vX-ide-win-x64.zip` / `...-x86.zip`: Contains `ide/` (`version.dll`, `config.json`).
+- `antigravity-proxy-vX-cli-win-x64.zip` / `...-x86.zip`: Contains `cli/` (`dbghelp.dll`, `antigravity_proxy.dll`, `config.json`).
 
-(Download from Releases, or build them yourself.)
+Each package also includes the common `config-web.html` and `使用说明.md`. Building locally generates both `output/ide` and `output/cli` directories.
 
 ### Step 3: Deploy to Antigravity
 
-Copy `version.dll` and `config.json` to Antigravity’s main program directory (next to `Antigravity.exe`). Then launch Antigravity — done.
+> 💡 **Please check which product flavor you are using**:
+> - **Antigravity Desktop (IDE)**: The GUI desktop editor with windows, main executable `Antigravity.exe`. See **[3.1 Desktop Deployment]**.
+> - **Antigravity CLI (`agy`)**: The terminal CLI tool executed via `agy`, main executable `agy.exe`. See **[3.2 CLI Beginner's Guide]**.
+> - ⚠️ **Never mix files between the two directories!** Desktop does not need `dbghelp.dll`; CLI does not need and **must not** contain `version.dll`.
 
-For **Antigravity CLI**, copy `dbghelp.dll`, `version.dll`, and `config.json` next to `agy.exe`. `agy.exe` loads the colocated `dbghelp.dll`, which then loads `version.dll`; no separate launcher is required.
+#### 3.1 Desktop (Antigravity IDE) Deployment
+
+Copy the files from `ide/` (`version.dll` and `config.json`) to the **Antigravity main program directory** (next to `Antigravity.exe`). Then launch Antigravity — done.
+
+#### 3.2 Antigravity CLI (`agy`) Beginner-Friendly Guide
+
+If you are using **Antigravity CLI** (typing `agy` in your terminal), follow these simple steps to configure the proxy:
+
+##### 1. Locate the `agy.exe` Directory in One Click
+No need to search through hidden folders manually:
+- **Easiest method**: Press the <kbd>Win</kbd> + <kbd>R</kbd> shortcut on your keyboard, paste the following into the Run dialog:
+  ```text
+  %LOCALAPPDATA%\agy\bin
+  ```
+  Click "OK" or press Enter, and the exact folder containing `agy.exe` will open immediately!
+- *(Alternative: Run `explorer (Split-Path (Get-Command agy).Source)` in PowerShell)*
+
+##### 2. Copy the 3 CLI Proxy Files
+Extract the downloaded CLI package (e.g. `antigravity-proxy-vX-cli-win-x64.zip` or from local build `output/cli/`), and copy all **3 files** into the `agy.exe` directory:
+1. `dbghelp.dll` (Startup loader shim)
+2. `antigravity_proxy.dll` (Proxy engine, **must be colocated with dbghelp.dll**)
+3. `config.json` (Configuration file)
+
+> ⚠️ **Key Tips for Beginners**:
+> 1. **Do NOT copy `version.dll` into the CLI directory!** The CLI must use `dbghelp.dll` to load `antigravity_proxy.dll`. If an old `version.dll` exists in this folder, delete it!
+> 2. Both `dbghelp.dll` and `antigravity_proxy.dll` are **mandatory** and must stay together in the same directory.
+
+##### 3. Check Proxy Port (Default is 10808)
+Open `config.json` with Notepad and check the `proxy` settings:
+```json
+"proxy": {
+    "host": "127.0.0.1",
+    "port": 10808,
+    "type": "socks5"
+}
+```
+- If you use **v2rayN / Xray**: The default SOCKS5 port is `10808`. It works out of the box without any modification!
+- If you use **Clash / Mihomo**: Change `10808` to your mixed/SOCKS port (typically `7890`).
+
+##### 4. Run and Verify
+Open any terminal (PowerShell, Command Prompt, or Windows Terminal) and run:
+```powershell
+agy
+```
+- **Verification**: All traffic (Google OAuth login, model requests, token exchange) is routed through port `10808`, eliminating the `token exchange failed: dial tcp ... connectex` timeout error!
+- **How to check logs?**
+  Open `logs/proxy-YYYYMMDD.log` inside the `agy.exe` directory. When you see:
+  ```text
+  [信息] 当前进程 agy.exe 使用全量模式：安装网络与进程创建 Hook
+  [信息] 所有 API Hook 安装成功 (Phase 1-3)
+  ```
+  it confirms that the proxy has successfully hooked all CLI traffic.
 
 #### Antigravity 2.0 Notes
 
