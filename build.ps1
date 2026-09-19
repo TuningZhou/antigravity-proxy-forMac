@@ -127,6 +127,20 @@ Write-Step "检查依赖项..."
 # 检查 CMake
 $cmake = Get-Command cmake -ErrorAction SilentlyContinue
 if (-not $cmake) {
+    $vsWhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+    if (Test-Path $vsWhere) {
+        $vsPaths = & $vsWhere -products * -all -property installationPath
+        foreach ($vsPath in $vsPaths) {
+            $candidate = Join-Path $vsPath "Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin"
+            if (Test-Path (Join-Path $candidate "cmake.exe")) {
+                $env:PATH = "$candidate;$env:PATH"
+                $cmake = Get-Command cmake -ErrorAction SilentlyContinue
+                if ($cmake) { break }
+            }
+        }
+    }
+}
+if (-not $cmake) {
     Write-Error "CMake 未找到，请确保 CMake 已安装并添加到 PATH"
     exit 1
 }
@@ -183,7 +197,6 @@ Push-Location $BuildDir
 try {
     $cmakeArgs = @(
         "..",
-        "-G", "Visual Studio 17 2022",
         "-A", $cmakeArch
     )
     if ($UseStaticRuntime) {
@@ -356,7 +369,7 @@ $configJson = @{
     log_level = "info"
     proxy = @{
         host = "127.0.0.1"
-        port = 7890
+        port = 10808
         type = "socks5"
     }
     fake_ip = @{
@@ -483,7 +496,7 @@ FAILED_PRECONDITION (code 400): User location is not supported for the API use.
 {
     "proxy": {
         "host": "127.0.0.1",       // 代理服务器地址
-        "port": 7890,              // 代理服务器端口
+        "port": 10808,             // 代理服务器端口
         "type": "socks5"           // 代理类型: socks5 或 http
     },
     "log_level": "info",           // 日志等级: debug/info/warn/error (默认 info)
@@ -538,7 +551,7 @@ FAILED_PRECONDITION (code 400): User location is not supported for the API use.
 #### 如何确认端口是否开启？
 ```powershell
 # PowerShell 测试端口
-Test-NetConnection -ComputerName 127.0.0.1 -Port 7890
+Test-NetConnection -ComputerName 127.0.0.1 -Port 10808
 ```
 
 ### 3. 启动目标程序
@@ -550,7 +563,7 @@ Test-NetConnection -ComputerName 127.0.0.1 -Port 7890
 |--------|------|--------|
 | log_level | 日志等级 (debug/info/warn/error) | info |
 | proxy.host | 代理服务器地址 | 127.0.0.1 |
-| proxy.port | 代理服务器端口 | 7890 |
+| proxy.port | 代理服务器端口 | 10808 |
 | proxy.type | 代理类型 (socks5/http) | socks5 |
 | fake_ip.enabled | 是否启用 FakeIP 系统 | true |
 | fake_ip.cidr | 虚拟 IP 地址范围 | 198.18.0.0/15 |

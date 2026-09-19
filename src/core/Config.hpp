@@ -18,7 +18,7 @@
 namespace Core {
     struct ProxyConfig {
         std::string host = "127.0.0.1";
-        int port = 7890;
+        int port = 10808;
         std::string type = "socks5";
     };
 
@@ -758,7 +758,7 @@ namespace Core {
                 if (j.contains("proxy")) {
                     auto& p = j["proxy"];
                     proxy.host = p.value("host", "127.0.0.1");
-                    proxy.port = p.value("port", 7890);
+                    proxy.port = p.value("port", 10808);
                     proxy.type = p.value("type", "socks5");
                 }
 
@@ -795,8 +795,8 @@ namespace Core {
                     proxy.host = "127.0.0.1";
                 }
                 if (proxy.port < 0 || proxy.port > 65535) {
-                    Logger::Warn("配置: proxy.port 超出范围(" + std::to_string(proxy.port) + ")，已回退为 7890");
-                    proxy.port = 7890;
+                    Logger::Warn("配置: proxy.port 超出范围(" + std::to_string(proxy.port) + ")，已回退为 10808");
+                    proxy.port = 10808;
                 }
 
                 if (j.contains("fake_ip")) {

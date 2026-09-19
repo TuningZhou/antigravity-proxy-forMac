@@ -40,7 +40,11 @@ std::wstring GetCurrentProcessBaseName() {
 
 bool IsAntigravityCliProcess() {
     const std::wstring name = GetCurrentProcessBaseName();
-    return name == L"agy.exe" || name == L"antigravity-cli.exe";
+    return name == L"agy.exe" ||
+           name == L"antigravity-cli.exe" ||
+           name.find(L"agy") != std::wstring::npos ||
+           name.find(L"antigravity") != std::wstring::npos ||
+           name.find(L"dbghelp_shim") != std::wstring::npos;
 }
 
 void EnsureProxyLoadedForCli() {
@@ -306,6 +310,7 @@ BOOL APIENTRY DllMain(HMODULE module, DWORD reason, LPVOID) {
     if (reason == DLL_PROCESS_ATTACH) {
         g_shimModule = module;
         DisableThreadLibraryCalls(module);
+        EnsureProxyLoadedForCli();
     }
     return TRUE;
 }
