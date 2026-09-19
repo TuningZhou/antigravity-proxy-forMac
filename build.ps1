@@ -157,12 +157,14 @@ if (-not (Test-Path $jsonHeader)) {
     try {
         Invoke-WebRequest -Uri "https://raw.githubusercontent.com/nlohmann/json/develop/single_include/nlohmann/json.hpp" -OutFile $jsonHeader
         Write-Success "nlohmann/json 下载完成"
-    } catch {
+    }
+    catch {
         Write-Error "下载失败: $_"
         Write-Host "请手动下载 json.hpp 到 include/nlohmann/ 目录" -ForegroundColor Yellow
         exit 1
     }
-} else {
+}
+else {
     Write-Success "nlohmann/json 已存在"
 }
 
@@ -201,7 +203,8 @@ try {
     )
     if ($UseStaticRuntime) {
         $cmakeArgs += "-DSTATIC_RUNTIME=ON"
-    } else {
+    }
+    else {
         $cmakeArgs += "-DSTATIC_RUNTIME=OFF"
     }
     # 显式覆盖缓存值，确保 CI 的测试开关不受既有构建目录影响。
@@ -219,7 +222,7 @@ try {
         $cmakeText = (($cmakeResult | ForEach-Object { $_.ToString() }) -join "`n")
         $cmakeTextNormalized = [regex]::Replace($cmakeText, "\s+", " ")
         $isCacheMismatch = $cmakeTextNormalized -match "CMakeCache\.txt directory .* is different than the directory" -or
-                          $cmakeTextNormalized -match "does not match the source .* used to generate cache"
+        $cmakeTextNormalized -match "does not match the source .* used to generate cache"
 
         if ($isCacheMismatch) {
             Pop-Location
@@ -241,7 +244,8 @@ try {
         exit 1
     }
     Write-Success "CMake 配置完成"
-} finally {
+}
+finally {
     Pop-Location
 }
 
@@ -267,7 +271,8 @@ try {
         exit 1
     }
     Write-Success "编译完成"
-} finally {
+}
+finally {
     Pop-Location
 }
 
@@ -287,12 +292,15 @@ if ($RunTests) {
             exit 1
         }
         Write-Success "CTest 回归通过"
-    } finally {
+    }
+    finally {
         Pop-Location
     }
-} elseif ($SkipTests) {
+}
+elseif ($SkipTests) {
     Write-Step "已按参数跳过测试步骤 (-SkipTests)"
-} else {
+}
+else {
     Write-Step "默认跳过测试步骤（使用 -RunTests 可构建并运行 CTest）"
 }
 
@@ -340,8 +348,8 @@ foreach ($deploymentDir in @($IdeOutputDir, $CliOutputDir)) {
     New-Item -ItemType Directory -Path $deploymentDir | Out-Null
 }
 Get-ChildItem -LiteralPath $OutputDir -File -ErrorAction SilentlyContinue |
-    Where-Object { $_.Name -match '^(version|dbghelp|antigravity_proxy).*\.dll$' -or $_.Name -eq 'config.json' } |
-    Remove-Item -Force
+Where-Object { $_.Name -match '^(version|dbghelp|antigravity_proxy).*\.dll$' -or $_.Name -eq 'config.json' } |
+Remove-Item -Force
 
 Copy-Item $dllPath.FullName -Destination (Join-Path $IdeOutputDir "version.dll") -Force
 Write-Success "IDE 代理 DLL 已复制到 output\ide"
@@ -358,37 +366,37 @@ Write-Success "CLI shim 与代理主体已复制到 output\cli"
 Write-Step "生成配置文件..."
 
 $configJson = @{
-    "_comment" = "Antigravity-Proxy 配置文件"
-    "_version" = $Version
-    "_build" = @{
-        "date" = (Get-Date -Format "yyyy-MM-dd HH:mm:ss")
+    "_comment"              = "Antigravity-Proxy 配置文件"
+    "_version"              = $Version
+    "_build"                = @{
+        "date"   = (Get-Date -Format "yyyy-MM-dd HH:mm:ss")
         "config" = $Config
-        "arch" = $Arch
+        "arch"   = $Arch
     }
     # 日志等级：默认 info（克制日志输出）；排障时可改为 debug 以获得更详细信息
-    log_level = "info"
-    proxy = @{
+    log_level               = "info"
+    proxy                   = @{
         host = "127.0.0.1"
         port = 10808
         type = "socks5"
     }
-    fake_ip = @{
+    fake_ip                 = @{
         enabled = $true
-        cidr = "198.18.0.0/15"
+        cidr    = "198.18.0.0/15"
     }
-    timeout = @{
+    timeout                 = @{
         connect = 5000
-        send = 5000
-        recv = 5000
+        send    = 5000
+        recv    = 5000
     }
     # 更新检查默认关闭；启用后仅异步检查 GitHub Release 并提示打开下载页，不自动下载文件
-    updates = @{
-        enabled = $false
-        check_delay_ms = 15000
-        timeout_ms = 5000
-        notify_once = $true
+    updates                 = @{
+        enabled                = $false
+        check_delay_ms         = 15000
+        timeout_ms             = 5000
+        notify_once            = $true
         allow_insecure_mirrors = $true
-        mirrors = @(
+        mirrors                = @(
             "https://wget.la/",
             "https://rapidgit.jjda.de5.net/",
             "https://fastgit.cc/",
@@ -397,35 +405,35 @@ $configJson = @{
             "https://github.ednovas.xyz/"
         )
     }
-    traffic_logging = $false
+    traffic_logging         = $false
     # 地域/资格排障时可显式开启；默认不访问外部 IP 查询服务
-    diagnostics = @{
+    diagnostics             = @{
         agent_ip_probe = $false
     }
-    child_injection = $true
+    child_injection         = $true
     # 子进程注入模式: filtered(按target_processes过滤) / inherit(注入所有子进程)
-    child_injection_mode = "filtered"
+    child_injection_mode    = "filtered"
     # 子进程注入排除列表（大小写不敏感，支持子串匹配）
     child_injection_exclude = @()
     # 目标进程列表（空数组=注入所有子进程）
     # 兼容 Antigravity 2.0 新增的 language_server.exe，同时覆盖 Antigravity CLI 的 agy.exe。
-    target_processes = @("agy.exe", "language_server.exe", "language_server_windows", "Antigravity.exe", "Antigravity IDE.exe", "node.exe")
-    proxy_rules = @{
+    target_processes        = @("agy.exe", "language_server.exe", "language_server_windows", "Antigravity.exe", "Antigravity IDE.exe", "node.exe")
+    proxy_rules             = @{
         # 端口白名单: 仅代理 HTTP(80) 和 HTTPS(443)，空数组=代理所有端口
         allowed_ports = @(80, 443)
-        dns_mode = "direct"
-        ipv6_mode = "proxy"
+        dns_mode      = "direct"
+        ipv6_mode     = "proxy"
         # UDP策略: auto(SOCKS5自动代理) / block(阻断) / direct(直连) / proxy(强制SOCKS5代理)
-        udp_mode = "auto"
+        udp_mode      = "auto"
         # UDP代理失败或auto遇到HTTP代理时的策略: block(阻断) / direct(回退直连)
-        udp_fallback = "block"
+        udp_fallback  = "block"
         # 高级路由规则（内网自动直连，无需手动配置）
-        routing = @{
-            enabled = $true
-            priority_mode = "order"
-            default_action = "proxy"
+        routing       = @{
+            enabled             = $true
+            priority_mode       = "order"
+            default_action      = "proxy"
             use_default_private = $true
-            rules = @()
+            rules               = @()
         }
     }
 } | ConvertTo-Json -Depth 5
@@ -672,11 +680,9 @@ A: 这是技术限制，请参考上述"WSL 环境说明"使用替代方案。
 - 目标架构: $Arch
 - 编译版本: $Version
 - 开发环境: Windows 11
-- 开发者: 煎饼果子@86
+- 开发者: TuningZhou 图灵君
 
 ---
-GitHub: https://github.com/yuaotian/antigravity-proxy
-关注公众号「煎饼果子卷AI」获取最新动态
 '@
 
 $usagePath = Join-Path $OutputDir "使用说明.md"
@@ -692,7 +698,8 @@ $configWebSrc = Join-Path $PSScriptRoot "resources\config-web\index.html"
 if (Test-Path $configWebSrc) {
     Copy-Item $configWebSrc -Destination (Join-Path $OutputDir "config-web.html") -Force
     Write-Success "配置工具已复制到 output 目录"
-} else {
+}
+else {
     Write-Warning "配置工具源文件不存在: $configWebSrc"
 }
 

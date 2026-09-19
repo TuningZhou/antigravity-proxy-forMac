@@ -1,12 +1,10 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
-    [Parameter(Mandatory = $true)]
-    [string]$Version,
+    [string]$Version = "2.4",
     [ValidateSet("x64", "x86")]
     [string]$Arch = "x64",
     [string]$OutputDir = "",
-    [Parameter(Mandatory = $true)]
-    [string]$DestinationDir
+    [string]$DestinationDir = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -14,6 +12,9 @@ $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $PSScriptRoot
 if ([string]::IsNullOrWhiteSpace($OutputDir)) {
     $OutputDir = Join-Path $Root "output"
+}
+if ([string]::IsNullOrWhiteSpace($DestinationDir)) {
+    $DestinationDir = Join-Path $Root "dist"
 }
 
 $normalizedVersion = $Version.Trim()
