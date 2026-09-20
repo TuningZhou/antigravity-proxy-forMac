@@ -51,6 +51,7 @@ log/
 
 *.zip
 *.7z
+dist/
 
 build/
 build-x64/

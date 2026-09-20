@@ -963,11 +963,13 @@ C:UsersYourUsernameAppDataLocalProgramsMicrosoft VS Code├── Code.exe
 
 ## 👤 Автор
 
+Этот проект создан и поддерживается TuningZhou (图灵君). Особая благодарность автору оригинала yuaotian: https://github.com/yuaotian/antigravity-proxy
+
 <table>
   <tr>
     <td align="center">
-      <b>煎饼果子（86）</b><br/>
-      <sub>Независимый разработчик</sub>
+      <b>TuningZhou 图灵君</b><br/>
+      <sub>Seasoned Figma Designer / 365iDesign LLC Founder</sub>
     </td>
   </tr>
 </table>
@@ -976,9 +978,9 @@ C:UsersYourUsernameAppDataLocalProgramsMicrosoft VS Code├── Code.exe
 
 | Платформа | Данные |
 |-----------|--------|
-| **WeChat** | JavaRookie666 |
-| **Telegram** | [@yuaotian](https://t.me/yuaotian) |
-| **GitHub** | [@yuaotian](https://github.com/yuaotian) |
+| **WeChat** | BIBIQ-ME-COM |
+| **X (Twitter)** | [@TuningZhou](https://x.com/TuningZhou) |
+| **GitHub** | [@TuningZhou](https://github.com/TuningZhou) |
 
 ### 🎁 Поддержка
 
@@ -994,24 +996,24 @@ C:UsersYourUsernameAppDataLocalProgramsMicrosoft VS Code├── Code.exe
       <sub>Добавить в WeChat</sub>
     </td>
     <td align="center">
-      <img src="img/wx_gzh_qr.jpg" alt="QR-код официального аккаунта" width="200"/><br/>
-      <sub>Подписаться на официальный аккаунт</sub>
+      <img src="img/douyin.png" alt="QR-код Douyin" width="200"/><br/>
+      <sub>Douyin</sub>
     </td>
     <td align="center">
-      <img src="img/qun-23.jpg" alt="QR-код группы WeChat" width="200"/><br/>
-      <sub>🔥 Вступить в группу WeChat</sub>
+      <img src="img/xhs.jpg" alt="QR-код Xiaohongshu" width="200"/><br/>
+      <sub>Xiaohongshu</sub>
     </td>
   </tr>
 </table>
 
 ### 💰 Пожертвования
 
-Если проект вам помог, можете угостить автора кофе ☕
+Если проект вам помог, можете угостить автора чашкой кофе Luckin ☕ или завтраком в KFC ☕
 
 <table>
   <tr>
     <td align="center">
-      <img src="img/wx_zsm.jpg" alt="Вознаграждение WeChat" width="200"/><br/>
+      <img src="img/wx_zsm.png" alt="Вознаграждение WeChat" width="200"/><br/>
       <sub>Вознаграждение WeChat</sub>
     </td>
     <td align="center">
@@ -1020,30 +1022,6 @@ C:UsersYourUsernameAppDataLocalProgramsMicrosoft VS Code├── Code.exe
     </td>
   </tr>
 </table>
-
-### 💳 Криптовалюта
-
-Для зарубежных пользователей также доступны пожертвования в криптовалюте:
-
-<details>
-<summary><b>🪙 Показать криптовалютные адреса (нажмите, чтобы развернуть)</b></summary>
-
-#### 1️⃣ USDT (Tether) и стейблкоины
-
-| Сеть | Адрес |
-|------|-------|
-| 🔴 **TRC-20 (Tron)** | `TFbJNoY5Lep5ZrDwBbT8rV1i8xR4ZhX53k` |
-| 🟡 **Polygon / BSC / Arbitrum** 🔥 *Самые низкие комиссии* | `0x44f8925b9f93b3d6da8d5ad26a3516e3e652cc88` |
-
-> *Адрес EVM поддерживает USDT в сетях Polygon, BSC и Arbitrum One*
-
-#### 2️⃣ Litecoin (LTC) ✅ Низкие комиссии
-
-| Сеть | Адрес |
-|------|-------|
-| 🔵 **Litecoin** | `LVrigKxtWfPymMRtRqL3z2eZxfncR3dPV7` |
-
-</details>
 
 ---
 
@@ -1071,6 +1049,6 @@ https://linux.do/t/topic/1189424
 ---
 
 <p align="center">
-  <sub>Сделано с ❤️ автором 煎饼果子（86）</sub>
+  <sub>Made with Google Antigravity IDE by TuningZhou 图灵君</sub>
 </p>
 

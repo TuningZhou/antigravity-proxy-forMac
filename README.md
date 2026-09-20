@@ -1195,11 +1195,13 @@ MinHook 部分版权归 **Tsuda Kageyu** 所有。
 
 ## 👤 关于作者 / Author
 
+本项目由图灵君（TuningZhou）制作与维护，感谢原作者 yuaotian：https://github.com/yuaotian/antigravity-proxy
+
 <table>
   <tr>
     <td align="center">
-      <b>煎饼果子（86）</b><br/>
-      <sub>独立开发者 / Independent Developer</sub>
+      <b>TuningZhou 图灵君</b><br/>
+      <sub>Seasoned Figma Designer  / 365iDesign LLC Founder </sub>
     </td>
   </tr>
 </table>
@@ -1208,9 +1210,9 @@ MinHook 部分版权归 **Tsuda Kageyu** 所有。
 
 | 平台 | 信息 |
 |------|------|
-| **微信** | JavaRookie666 |
-| **Telegram** | [@yuaotian](https://t.me/yuaotian) |
-| **GitHub** | [@yuaotian](https://github.com/yuaotian) |
+| **微信** | BIBIQ-ME-COM |
+| **X twitter** | [@TuningZhou](https://x.com/TuningZhou) |
+| **GitHub** | [@TuningZhou](https://github.com/TuningZhou) |
 
 ### 🎁 支持作者 / Support
 
@@ -1226,24 +1228,24 @@ MinHook 部分版权归 **Tsuda Kageyu** 所有。
       <sub>添加微信交流</sub>
     </td>
     <td align="center">
-      <img src="img/wx_gzh_qr.jpg" alt="公众号二维码" width="200"/><br/>
-      <sub>关注公众号</sub>
+      <img src="img/douyin.png" alt="抖音二维码" width="200"/><br/>
+      <sub>抖音交流</sub>
     </td>
     <td align="center">
-      <img src="img/qun-23.jpg" alt="微信群二维码" width="200"/><br/>
-      <sub>🔥 加入微信交流群</sub>
+      <img src="img/xhs.jpg" alt="小红书二维码" width="200"/><br/>
+      <sub>小红书交流</sub>
     </td>
   </tr>
 </table>
 
 ### 💰 打赏支持 / Donate
 
-如果这个项目帮到了你，可以请作者喝杯咖啡 ☕
+如果这个项目帮到了您，可以请我喝杯9.9元的瑞幸咖啡 ☕ 或肯德基KFC早餐 ☕
 
 <table>
   <tr>
     <td align="center">
-      <img src="img/wx_zsm.jpg" alt="微信赞赏码" width="200"/><br/>
+      <img src="img/wx_zsm.png" alt="微信赞赏码" width="200"/><br/>
       <sub>微信赞赏</sub>
     </td>
     <td align="center">
@@ -1279,5 +1281,5 @@ https://linux.do/t/topic/1189424
 ---
 
 <p align="center">
-  <sub>Made with ❤️ by 煎饼果子（86）</sub>
+  <sub>Made with Google Antigravity IDE by TuningZhou 图灵君</sub>
 </p>

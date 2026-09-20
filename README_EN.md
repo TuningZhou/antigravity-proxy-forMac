@@ -965,11 +965,13 @@ MinHook portion is copyrighted by **Tsuda Kageyu**.
 
 ## 👤 Author
 
+This project is created and maintained by TuningZhou (图灵君). Special thanks to original author yuaotian: https://github.com/yuaotian/antigravity-proxy
+
 <table>
   <tr>
     <td align="center">
-      <b>煎饼果子（86）</b><br/>
-      <sub>Independent Developer</sub>
+      <b>TuningZhou 图灵君</b><br/>
+      <sub>Seasoned Figma Designer  / 365iDesign LLC Founder </sub>
     </td>
   </tr>
 </table>
@@ -978,9 +980,9 @@ MinHook portion is copyrighted by **Tsuda Kageyu**.
 
 | Platform | Info |
 |----------|------|
-| **WeChat** | JavaRookie666 |
-| **Telegram** | [@yuaotian](https://t.me/yuaotian) |
-| **GitHub** | [@yuaotian](https://github.com/yuaotian) |
+| **WeChat** | BIBIQ-ME-COM |
+| **X twitter** | [@TuningZhou](https://x.com/TuningZhou) |
+| **GitHub** | [@TuningZhou](https://github.com/TuningZhou) |
 
 ### 🎁 Support
 
@@ -996,24 +998,24 @@ If this project helps you, feel free to:
       <sub>Add WeChat</sub>
     </td>
     <td align="center">
-      <img src="img/wx_gzh_qr.jpg" alt="Official Account QR Code" width="200"/><br/>
-      <sub>Follow Official Account</sub>
+      <img src="img/douyin.png" alt="Douyin QR Code" width="200"/><br/>
+      <sub>Douyin</sub>
     </td>
     <td align="center">
-      <img src="img/qun-23.jpg" alt="WeChat Group QR Code" width="200"/><br/>
-      <sub>🔥 Join WeChat Group</sub>
+      <img src="img/xhs.jpg" alt="Xiaohongshu QR Code" width="200"/><br/>
+      <sub>Xiaohongshu</sub>
     </td>
   </tr>
 </table>
 
 ### 💰 Donate
 
-If this project helped you, consider buying the author a coffee ☕
+If this project helped you, feel free to buy me a 9.9 RMB Luckin Coffee ☕ or KFC breakfast ☕
 
 <table>
   <tr>
     <td align="center">
-      <img src="img/wx_zsm.jpg" alt="WeChat Reward" width="200"/><br/>
+      <img src="img/wx_zsm.png" alt="WeChat Reward" width="200"/><br/>
       <sub>WeChat Reward</sub>
     </td>
     <td align="center">
@@ -1073,5 +1075,5 @@ https://linux.do/t/topic/1189424
 ---
 
 <p align="center">
-  <sub>Made with ❤️ by 煎饼果子（86）</sub>
+  <sub>Made with Google Antigravity IDE by TuningZhou 图灵君</sub>
 </p>
