@@ -5,7 +5,7 @@
 <h1 align="center">Antigravity-Proxy (macOS)</h1>
 
 <p align="center">
-  <b>🚀 专为 Antigravity 打造的 macOS 专属透明代理：免 TUN 模式、全流量接管、Dyld Interposing</b>
+  <b>🚀 专为 Antigravity 打造的 macOS 专属透明代理：让向往自由翱翔的大鹏也能无需 TUN 模式稳定走代理</b>
 </p>
 
 <p align="center">
