@@ -5,7 +5,7 @@
 <h1 align="center">Antigravity-Proxy</h1>
 
 <p align="center">
-  <b>🚀 Built for the Antigravity editor: use proxy without TUN mode (especially useful in China)</b>
+  <b>🚀 Built for the Antigravity editor: empowering soaring rocs yearning for freedom to stably route through proxies without TUN mode</b>
 </p>
 
 <p align="center">

@@ -5,7 +5,7 @@
 <h1 align="center">Antigravity-Proxy</h1>
 
 <p align="center">
-  <b>🚀 专为 Antigravity 编辑器打造：在中国也能无需 TUN 模式稳定走代理</b>
+  <b>🚀 专为 Antigravity 编辑器打造：让向往自由翱翔的大鹏也能无需 TUN 模式稳定走代理</b>
 </p>
 
 <p align="center">
