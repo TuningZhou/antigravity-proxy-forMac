@@ -10,6 +10,7 @@
 int main() {
     using Hooks::GetCreateProcessTargetBaseNameA;
     using Hooks::IsAntigravityHostProcessName;
+    using Hooks::IsChromiumSubprocess;
     using Hooks::IsLanguageServerProcessName;
 
     // lpApplicationName 明确给出路径时，不按空格截断文件名。
@@ -43,6 +44,28 @@ int main() {
     assert(IsAntigravityHostProcessName("ANTIGRAVITY IDE.EXE"));
     assert(!IsAntigravityHostProcessName("language_server.exe"));
     assert(!IsAntigravityHostProcessName("node.exe"));
+
+    // Chromium 沙盒与内部辅助子进程识别（宽字符与 ANSI）
+    assert(IsChromiumSubprocess(L"\"C:\\Users\\test\\AppData\\Local\\Programs\\antigravity\\Antigravity.exe\" --type=renderer --field-trial-handle=123"));
+    assert(IsChromiumSubprocess(L"\"C:\\Users\\test\\AppData\\Local\\Programs\\antigravity\\Antigravity.exe\" --type=gpu-process"));
+    assert(IsChromiumSubprocess(L"\"C:\\Users\\test\\AppData\\Local\\Programs\\antigravity\\Antigravity.exe\" --type=utility --utility-sub-type=network.mojom.NetworkService"));
+    assert(IsChromiumSubprocess(L"\"C:\\Users\\test\\AppData\\Local\\Programs\\antigravity\\Antigravity.exe\" --type=crashpad-handler"));
+    assert(IsChromiumSubprocess("\"C:\\test\\Antigravity.exe\" --type=renderer"));
+    assert(IsChromiumSubprocess("/type=renderer"));
+    assert(!IsChromiumSubprocess(static_cast<const wchar_t*>(nullptr)));
+    assert(!IsChromiumSubprocess(static_cast<const char*>(nullptr)));
+    assert(!IsChromiumSubprocess(L""));
+    assert(!IsChromiumSubprocess(L"\"C:\\Users\\test\\AppData\\Local\\Programs\\antigravity\\Antigravity.exe\""));
+    assert(!IsChromiumSubprocess("C:\\Users\\test\\AppData\\Local\\Programs\\antigravity\\resources\\bin\\language_server.exe --standalone --https_server_port 0"));
+
+    // 版本探测进程识别（宽字符与 ANSI）
+    using Hooks::IsStampCheckCommandLine;
+    assert(IsStampCheckCommandLine(L"\"C:\\path\\language_server.exe\" --stamp"));
+    assert(IsStampCheckCommandLine(L"language_server.exe /stamp"));
+    assert(IsStampCheckCommandLine("\"C:\\path\\language_server.exe\" --stamp"));
+    assert(!IsStampCheckCommandLine(L"\"C:\\path\\language_server.exe\" --standalone"));
+    assert(!IsStampCheckCommandLine(static_cast<const wchar_t*>(nullptr)));
+    assert(!IsStampCheckCommandLine(static_cast<const char*>(nullptr)));
 
     return 0;
 }

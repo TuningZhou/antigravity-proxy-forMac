@@ -2,10 +2,36 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstring>
+#include <cwchar>
 #include <string>
 #include <utility>
 
 namespace Hooks {
+
+inline bool IsChromiumSubprocess(const wchar_t* commandLine) {
+    if (!commandLine || *commandLine == L'\0') return false;
+    return std::wcsstr(commandLine, L"--type=") != nullptr ||
+           std::wcsstr(commandLine, L"/type=") != nullptr;
+}
+
+inline bool IsChromiumSubprocess(const char* commandLine) {
+    if (!commandLine || *commandLine == '\0') return false;
+    return std::strstr(commandLine, "--type=") != nullptr ||
+           std::strstr(commandLine, "/type=") != nullptr;
+}
+
+inline bool IsStampCheckCommandLine(const wchar_t* commandLine) {
+    if (!commandLine || *commandLine == L'\0') return false;
+    return std::wcsstr(commandLine, L"--stamp") != nullptr ||
+           std::wcsstr(commandLine, L"/stamp") != nullptr;
+}
+
+inline bool IsStampCheckCommandLine(const char* commandLine) {
+    if (!commandLine || *commandLine == '\0') return false;
+    return std::strstr(commandLine, "--stamp") != nullptr ||
+           std::strstr(commandLine, "/stamp") != nullptr;
+}
 
 inline std::string ToLowerAsciiCopy(std::string s) {
     std::transform(s.begin(), s.end(), s.begin(),

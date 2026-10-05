@@ -4,6 +4,9 @@
 #endif
 
 #include <windows.h>
+#include <DbgHelp.h>
+#pragma comment(lib, "dbghelp.lib")
+
 #include <cwchar>
 #include <fstream>
 #include <memory>
@@ -13,6 +16,80 @@
 #include "core/Logger.hpp"
 #include "hooks/ProcessName.hpp"
 #include "update/UpdateChecker.hpp"
+
+// CRT 参数与纯虚函数异常捕获
+static void CustomInvalidParameterHandler(
+    const wchar_t* expression,
+    const wchar_t* function,
+    const wchar_t* file,
+    unsigned int line,
+    uintptr_t /*pReserved*/
+) {
+    char msg[512];
+    snprintf(msg, sizeof(msg),
+             "[CRASH] CRT Invalid Parameter: %ls in %ls (%ls:%u)",
+             expression ? expression : L"unknown",
+             function ? function : L"unknown",
+             file ? file : L"unknown",
+             line);
+    Core::Logger::Error(msg);
+}
+
+static void CustomPureCallHandler() {
+    Core::Logger::Error("[CRASH] Pure Virtual Function Call Detected!");
+}
+
+// 全局异常向量捕获：记录未捕获异常代码、发生地址与模块名，并在崩溃时落盘 minidump
+static LONG WINAPI ProcessVectoredExceptionHandler(PEXCEPTION_POINTERS pExceptionInfo) {
+    if (!pExceptionInfo || !pExceptionInfo->ExceptionRecord) {
+        return EXCEPTION_CONTINUE_SEARCH;
+    }
+
+    const DWORD code = pExceptionInfo->ExceptionRecord->ExceptionCode;
+    // 忽略常见良性非致命调试、RPC 异常以及标准 MSVC C++ 内部异常 (0xE06D7363)
+    // 0xE06D7363 在正常 C++ 运行时 try-catch 中频繁触发，VEH 位于异常处理最顶端，
+    // 不应拦截或记录，避免造成严重性能损耗与日志风暴。
+    if (code == 0x40010006 || code == 0x000006BA || code == 0x406D1388 || code == 0xE06D7363) {
+        return EXCEPTION_CONTINUE_SEARCH;
+    }
+
+    PVOID addr = pExceptionInfo->ExceptionRecord->ExceptionAddress;
+    char modName[MAX_PATH] = "UnknownModule";
+    HMODULE hMod = NULL;
+    if (GetModuleHandleExA(
+        GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+        reinterpret_cast<LPCSTR>(addr),
+        &hMod) && hMod) {
+        GetModuleFileNameA(hMod, modName, MAX_PATH);
+    }
+
+    // 捕获所有严重异常 (0x80000000 ~ 0xFFFFFFFF)
+    if ((code & 0x80000000) != 0) {
+        char msg[512];
+        snprintf(msg, sizeof(msg),
+                 "[CRASH] 捕获到进程致命异常! Code=0x%08X, Address=0x%p, Module=%s",
+                 code, addr, modName);
+        Core::Logger::Error(msg);
+
+        // 尝试写入 mini dump 便于现场定位
+        const std::string dumpPath = Core::Logger::GetLogDirectoryPath() +
+                                     "\\crash-" + std::to_string(GetCurrentProcessId()) + ".dmp";
+        HANDLE hFile = CreateFileA(dumpPath.c_str(), GENERIC_WRITE, 0, NULL,
+                                   CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+        if (hFile != INVALID_HANDLE_VALUE) {
+            MINIDUMP_EXCEPTION_INFORMATION exInfo{};
+            exInfo.ThreadId = GetCurrentThreadId();
+            exInfo.ExceptionPointers = pExceptionInfo;
+            exInfo.ClientPointers = FALSE;
+            MiniDumpWriteDump(GetCurrentProcess(), GetCurrentProcessId(), hFile,
+                              MiniDumpNormal, &exInfo, NULL, NULL);
+            CloseHandle(hFile);
+            Core::Logger::Error("[CRASH] Minidump 已写入: " + dumpPath);
+        }
+    }
+
+    return EXCEPTION_CONTINUE_SEARCH;
+}
 
 // 前向声明
 namespace Hooks {
@@ -81,12 +158,6 @@ namespace {
         const DWORD len = GetModuleFileNameA(NULL, processPath, MAX_PATH);
         if (len == 0 || len >= MAX_PATH) return "Unknown";
         return Hooks::ExtractBaseNameFromPathLike(processPath);
-    }
-
-    static bool IsChromiumNetworkServiceProcess() {
-        const wchar_t* commandLine = GetCommandLineW();
-        return commandLine != nullptr &&
-               std::wcsstr(commandLine, L"--utility-sub-type=network.mojom.NetworkService") != nullptr;
     }
 
     struct LoadNotifyPayload {
@@ -250,6 +321,19 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved) {
         // ============================================================================
         VersionProxy::Initialize();  // 空操作，保持接口兼容
         
+        // 检查是否为 Chromium 专有子进程（renderer, gpu-process, utility, crashpad-handler 等）。
+        // 这些子进程运行在 Chromium 沙盒中并启用了 Arbitrary Code Guard (ACG)，
+        // 严禁安装 MinHook 或修改内存保护属性；且它们不派生业务进程，也不直接发起外网 AI 业务请求。
+        // 直接完全旁路，避免触发渲染沙盒崩溃或破坏 Chromium 内部 IPC。
+        if (Hooks::IsChromiumSubprocess(GetCommandLineW())) {
+            return TRUE;
+        }
+
+        // 注册全局异常捕获，在宿主或业务进程出现未捕获异常时第一时间记录模块名和调用上下文
+        AddVectoredExceptionHandler(1, ProcessVectoredExceptionHandler);
+        _set_invalid_parameter_handler(CustomInvalidParameterHandler);
+        _set_purecall_handler(CustomPureCallHandler);
+
         Core::Logger::Info("Antigravity-Proxy DLL 已加载 (模拟 version.dll)");
         Core::Logger::Info(IsOpenUrlProtocolLaunch()
             ? "启动类型：协议启动"
@@ -265,14 +349,11 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved) {
             break;
         }
 
-        // 诊断构建：只旁路 Chromium NetworkService，用于区分宿主进程角色对本地 TLS 的影响。
         const std::string processName = GetCurrentProcessBaseName();
-        const bool bypassNetworkService =
-            Hooks::IsAntigravityHostProcessName(processName) && IsChromiumNetworkServiceProcess();
-        const bool enableNetworkHooks = !bypassNetworkService;
+        const bool enableNetworkHooks = !Hooks::IsAntigravityHostProcessName(processName);
         Core::Logger::Info(enableNetworkHooks
             ? "当前进程 " + processName + " 使用全量模式：安装网络与进程创建 Hook"
-            : "当前进程 " + processName + " 使用 NetworkService 旁路模式：仅安装进程创建 Hook");
+            : "当前进程 " + processName + " 使用注入器模式：仅安装进程创建 Hook，跳过网络 Hook");
         Hooks::Install(enableNetworkHooks);
         MaybeShowLoadNotifyAsync(true);
         // 更新检查默认关闭；启用后也只在后台异步提示，不阻塞 Hook 安装主流程。
