@@ -12,10 +12,12 @@ set -euo pipefail
 #     详见包内“使用说明.txt”）
 #
 # 用法：
-#   ./scripts/package-mac.sh                         # 本机当前架构，版本号取 VERSION 文件
-#   ARCHS="arm64;x86_64" ./scripts/package-mac.sh    # Universal 2 通用二进制
-#   ./scripts/package-mac.sh --version 2.4           # 指定版本号
-#   ./scripts/package-mac.sh --arch arm64            # 指定单一架构
+#   ./scripts/package-mac.sh                         # 自动读取 Git tag / VERSION，构建本机架构
+#   ./scripts/package-mac.sh --arch universal2       # Universal 2 通用二进制 (Apple Silicon + Intel)
+#   ./scripts/package-mac.sh --arch x64              # 仅 Intel (x86_64)
+#   ./scripts/package-mac.sh --arch arm64            # 仅 Apple Silicon (arm64)
+#   ./scripts/package-mac.sh --arch all              # 批量打包 universal2 和 x64
+#   ./scripts/package-mac.sh --version 2.5.5         # 手动指定版本号
 # ==============================================================================
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -32,10 +34,10 @@ while [ $# -gt 0 ]; do
             [ $# -ge 2 ] || { echo "[错误] $1 需要一个版本号参数" >&2; exit 1; }
             VERSION="$2"; shift 2 ;;
         --arch)
-            [ $# -ge 2 ] || { echo "[错误] $1 需要一个架构参数(arm64/x86_64/universal)" >&2; exit 1; }
+            [ $# -ge 2 ] || { echo "[错误] $1 需要一个架构参数(universal2/x64/arm64/all)" >&2; exit 1; }
             ARCH_OVERRIDE="$2"; shift 2 ;;
         -h|--help)
-            sed -n '2,17p' "$0"
+            sed -n '2,19p' "$0"
             exit 0 ;;
         *)
             echo "[错误] 未知参数: $1" >&2
@@ -43,12 +45,14 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-# 版本号默认取 VERSION 文件
+# 版本号逻辑：优先参数指定，其次自动从 Git Tag 读取，再读取 VERSION 文件，最后兜底
 if [ -z "${VERSION}" ]; then
-    if [ -f "${PROJECT_ROOT}/VERSION" ]; then
+    if GIT_TAG="$(git describe --tags --exact-match 2>/dev/null || git describe --tags --abbrev=0 2>/dev/null)"; then
+        VERSION="${GIT_TAG}"
+    elif [ -f "${PROJECT_ROOT}/VERSION" ]; then
         VERSION="$(tr -d ' \r\n' < "${PROJECT_ROOT}/VERSION")"
     else
-        VERSION="2.4"
+        VERSION="2.5.5"
     fi
 fi
 VERSION="${VERSION#v}"
@@ -57,6 +61,25 @@ if ! [[ "${VERSION}" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
     exit 1
 fi
 TAG="v${VERSION}"
+
+# ------------------------------------------------------------ 批量打包支持 ----
+if [ "${ARCH_OVERRIDE:-}" = "all" ] || [ "${ARCH_OVERRIDE:-}" = "both" ]; then
+    echo "=================================================="
+    echo " Antigravity-Proxy macOS 批量打包"
+    echo " 版本: ${TAG}"
+    echo " 包含: universal2 (双架构) 与 x64 (Intel 架构)"
+    echo "=================================================="
+    "${BASH_SOURCE[0]}" --version "${VERSION}" --arch universal2
+    echo ""
+    "${BASH_SOURCE[0]}" --version "${VERSION}" --arch x64
+    echo ""
+    echo "=================================================="
+    echo " 批量打包全部完成！"
+    echo " 产物列表 (dist/):"
+    ls -lh "${PROJECT_ROOT}/dist/antigravity-proxy-${TAG}-mac-"*.zip 2>/dev/null || true
+    echo "=================================================="
+    exit 0
+fi
 
 # ---------------------------------------------------------------- 架构归一 ----
 RAW_ARCHS="${ARCH_OVERRIDE:-${ARCHS:-$(uname -m)}}"
@@ -75,7 +98,7 @@ case "${RAW_ARCHS}" in
         BUILD_ARCHS="${RAW_ARCHS}"
         ARCH_LABEL="universal2" ;;
     *)
-        echo "[错误] 不支持的架构参数: ${RAW_ARCHS}（可选 arm64 / x86_64 / universal）" >&2
+        echo "[错误] 不支持的架构参数: ${RAW_ARCHS}（可选 arm64 / x64 / universal2 / all）" >&2
         exit 1 ;;
 esac
 
@@ -91,6 +114,7 @@ if ! command -v cmake >/dev/null 2>&1; then
     exit 1
 fi
 
+rm -f "${PROJECT_ROOT}/output-mac/libantigravity_proxy.dylib"
 ARCHS="${BUILD_ARCHS}" ./build.sh Release
 
 DYLIB_SRC="${PROJECT_ROOT}/output-mac/libantigravity_proxy.dylib"
@@ -541,7 +565,6 @@ ensure_patch() {
     done
 
     # 可写：直接补丁；不可写：弹出系统密码框用管理员权限补丁
-    set +e
     if [ -w "$(macpatch_resolve_binary "${target}")" ]; then
         macpatch_ensure_target "${target}" "${DYLIB}"
         rc=$?
@@ -550,7 +573,6 @@ ensure_patch() {
         run_app_prepare_as_admin "${target}"
         rc=$?
     fi
-    set -e
 
     case "${rc}" in
         0)
@@ -615,10 +637,8 @@ ensure_app_ready() {
             case "${ans}" in
                 n|N|no|NO)
                     echo "跳过重建，直接为旧版本副本补签名..."
-                    set +e
                     macpatch_ensure_target "${COPY_APP}" "${DYLIB}"
                     rc=$?
-                    set -e
                     if [ "${rc}" -eq 0 ]; then EFFECTIVE_APP="${COPY_APP}"; return 0; fi
                     echo -e "${C_RED}[错误] 旧副本补丁失败（返回码 ${rc}），可重新选 1 并同意重建。${C_RESET}"
                     return 1 ;;
@@ -640,7 +660,6 @@ ensure_app_ready() {
 
     # 父目录/副本可写就直接执行；/Applications 等不可写位置走系统授权框
     parent="$(dirname "${COPY_APP}")"
-    set +e
     if [ -w "${parent}" ] && { [ ! -d "${COPY_APP}" ] || [ -w "${COPY_APP}" ]; }; then
         if [ "${do_recreate}" = "recreate" ]; then
             macpatch_ensure_app_target "${seed}" "${DYLIB}" recreate
@@ -653,7 +672,6 @@ ensure_app_ready() {
         run_app_prepare_as_admin "${seed}" "${do_recreate}"
         rc=$?
     fi
-    set -e
 
     case "${rc}" in
         0)
@@ -1180,6 +1198,27 @@ language_server 启动时还会出现“已绕过 Seatbelt/sandbox-exec”的提
   · 若第一次授权后转圈/报错，回到 IDE 重新点一次 Sign in 即可（实测第二
     次在数秒内 signedIn 成功），无需重启。
 
+【如何让命令行 agy 正常走代理与登录？】
+agy 是 Antigravity 的命令行 Agent。透明代理是通过动态库注入生效的，仅对由
+启动器启动的进程生效，并不是系统全局 VPN/TUN 网卡。在系统自带终端新建窗口直接
+敲 agy 时未挂载代理，连接 Google OAuth 服务器会报超时错误：
+（token exchange failed: Post "https://oauth2.googleapis.com/token": dial tcp ...:443: i/o timeout）。
+推荐使用以下方法让 agy 走代理：
+  1. 通过启动器直接运行（免配置）：
+     · 菜单运行：双击 Antigravity-Proxy.command，在菜单选 2（agy 命令行）；
+     · 命令行运行：在终端执行 ./Antigravity-Proxy.command agy [参数...]
+       （例如：./Antigravity-Proxy.command agy -i 或 agy -p "问题"）。
+  2. 在 ~/.zshrc 添加别名（实现任意新建终端直接敲 agy）：
+     在终端执行以下命令将别名写入 ~/.zshrc：
+       echo 'alias agy="\$HOME/Applications/Antigravity-Proxy-macOS/Antigravity-Proxy.command agy"' >> ~/.zshrc
+       source ~/.zshrc
+     （注：若解压位置不是 ~/Applications，请修改为实际的 Antigravity-Proxy.command 路径；
+       若使用 scripts/install-mac.sh 全局安装过，也可写 alias agy="antigravity-proxy agy"）。
+  3. 关于账号登录（共用凭据）：
+     agy 与 Antigravity IDE 客户端完全共享同一套 Google 登录凭据（存放在
+     ~/.antigravity 等目录）。只要你在代理启动的 Antigravity IDE TUN 副本中
+     成功登录过一次，agy 就会自动复用已有凭据，无需且不建议在命令行重复登录。
+
 【常见问题】
 1. 不要用 macOS 自带的 /usr/bin/curl 测试注入效果——SIP 系统完整性
    保护会对系统自带程序清除 DYLD_INSERT_LIBRARIES，属于正常现象。
@@ -1214,7 +1253,7 @@ ZIP_PATH="${DIST_DIR}/${ZIP_NAME}"
 rm -f "${ZIP_PATH}"
 
 # ditto 是 macOS 原生打包方式，可保留 Unix 可执行权限，解压后 .command 仍可双击
-( cd "${STAGE_PARENT}" && ditto -c -k --keepParent "${PKG_NAME}" "${ZIP_PATH}" )
+( cd "${STAGE_PARENT}" && export COPYFILE_DISABLE=1 && ditto -c -k --norsrc --keepParent "${PKG_NAME}" "${ZIP_PATH}" )
 
 echo ""
 echo "=================================================="

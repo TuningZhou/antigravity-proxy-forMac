@@ -185,7 +185,14 @@ antigravity-proxy agy -i               # 交互式对话
 
 > 选择器语法：`ide` = Antigravity IDE；`classic`（或 `antigravity`）= Antigravity；也支持 `apps` 列出的**序号**与 `.app` 绝对路径。非交互环境（脚本/CI）下若同时装了两个应用又不给选择器，会报错并列出候选，不会替你猜。
 
-> ℹ️ **关于 agy 登录**：agy 是 Antigravity 的命令行 Agent，账号体系与 IDE 共用（`~/.antigravity` / IDE 登录态）。在 **Antigravity IDE 内登录一次**即可，命令行无需也不再提供 `agy login` / `agy status`（旧版命令在 1.2.x 会报 `unexpected argument`）。agy 二进制启用了 Hardened Runtime，首次经启动器运行时会引导你做一次本地 ad-hoc 签名补丁（仅本机生效）。
+> ℹ️ **关于 agy 运行与登录**：
+> 1. **账号共用**：`agy` 是 Antigravity 的命令行 Agent，账号体系与 IDE 客户端完全共用（`~/.antigravity` / IDE 登录态）。在 **Antigravity IDE 内登录一次**即可，`agy` 启动时会自动复用已有登录凭证，命令行无需也不再提供 `agy login` / `agy status`。
+> 2. **为什么新开终端直接敲 `agy` 报超时？** 本项目是进程级透明注入（`DYLD_INSERT_LIBRARIES`），并非全局 VPN。新开终端直接输入 `agy` 是直连网络，直连 Google 鉴权接口（`oauth2.googleapis.com`）会被 GFW 拦截报 `dial tcp ...:443: i/o timeout`。
+> 3. **正确运行 agy 走代理的方式**：
+>    - **免安装包**：双击 `Antigravity-Proxy.command` 选 `2`，或在终端执行 `./Antigravity-Proxy.command agy -i`；
+>    - **已安装版**：在终端执行 `antigravity-proxy agy -i`；
+>    - **任意终端直接敲 `agy`**：见下方“让日常使用更省事”，配置一行 `alias agy=...` 即可！
+> 4. agy 二进制启用了 Hardened Runtime，首次经启动器运行时会自动引导你做一次本地 ad-hoc 签名补丁（仅本机生效）。
 
 启动器会自动在 `/Applications`、`~/Applications` 查找**全部**官方 Antigravity 原件（`Antigravity.app` 与 `Antigravity IDE.app`，自动跳过已有的 TUN 副本）；
 装在别处时，可直接把**官方 Antigravity.app 拖到启动器图标上**，或在终端传入 `.app` 路径——
@@ -219,13 +226,18 @@ tail -n 30 ~/.local/lib/logs/proxy-*.log 2>/dev/null || tail -n 30 output-mac/lo
 
 ### 💡 让日常使用更省事（可选）
 
-把解压后的文件夹放在固定位置，以后双击 `Antigravity-Proxy.command` 选 1 即可；
-终端用户也可以设个别名（把路径换成实际路径）：
+把解压后的文件夹放在固定位置（推荐 `~/Applications/Antigravity-Proxy-macOS`），以后双击 `Antigravity-Proxy.command` 选 1 即可；
+终端用户推荐在 `~/.zshrc` 添加别名，实现**直接敲 `agy` 和 `agygo` 自动走代理**：
 
 ```bash
-echo "alias agygo='$HOME/Documents/Code-Program/antigravity-proxy/scripts/antigravity-proxy.sh app'" >> ~/.zshrc
-source ~/.zshrc
+# 1. 启动 Antigravity IDE 图形应用副本
+alias agygo='$HOME/Applications/Antigravity-Proxy-macOS/Antigravity-Proxy.command app'
+
+# 2. 任意终端窗口直接输入 agy 自动带透明代理（路径按实际位置填写）
+alias agy='DYLD_INSERT_LIBRARIES="$HOME/Applications/Antigravity-Proxy-macOS/libantigravity_proxy.dylib" DYLD_FORCE_FLAT_NAMESPACE=1 $(command -v agy || echo "$HOME/.local/bin/agy")'
 ```
+
+保存后执行 `source ~/.zshrc` 生效。此后新建任何终端窗口，直接敲 `agy` 即可秒连 Google 鉴权与对话！
 
 ### 🔒 首次运行的安全提示
 
@@ -542,6 +554,40 @@ grep -E "子进程|宿主进程: language_server" output-mac/logs/proxy-*.log | 
   保护目录时，会在菜单顶部显示黄色提醒。
 - 备用方案：在 **系统设置 → 隐私与安全性 → 完全磁盘访问权限** 中允许"终端"，
   退出终端后重新打开再试。
+
+### 5. 在新终端直接输入 agy 报 `token exchange failed: ... dial tcp ...:443: i/o timeout`？
+
+- **原因**：透明代理是通过动态库注入（`DYLD_INSERT_LIBRARIES`）生效的，仅对由代理启动器启动的进程及其派生子进程生效，**并不是系统全局 VPN/TUN 网卡**。在 macOS 自带终端新建窗口中直接敲 `agy` 时，运行的是系统直连网络，未加载代理动态库；国内网络直连 Google OAuth 鉴权服务器（`oauth2.googleapis.com`）被防火墙拦截，从而引发超时错误。
+- **解决方法（任选一种）**：
+  - **方案 A（通过启动器运行，免配置）**：
+    - 图形菜单：双击 `Antigravity-Proxy.command`，在菜单选 **2（agy 命令行）** 即可；
+    - 命令行调用：在终端直接带参执行 `./Antigravity-Proxy.command agy [参数...]`（如 `./Antigravity-Proxy.command agy -i`）。
+  - **方案 B（在 `~/.zshrc` 添加别名，实现任意新建终端直接敲 `agy`）**：
+    在 `~/.zshrc` 中添加别名（将路径替换为您解压目录中实际的 dylib 路径）：
+    ```bash
+    echo 'alias agy="DYLD_INSERT_LIBRARIES=\"$HOME/Applications/Antigravity-Proxy-macOS/libantigravity_proxy.dylib\" DYLD_FORCE_FLAT_NAMESPACE=1 $(command -v agy || echo \"$HOME/.local/bin/agy\")"' >> ~/.zshrc
+    source ~/.zshrc
+    ```
+    （若使用 `scripts/install-mac.sh` 全局安装过，可写 `alias agy="antigravity-proxy agy"`）。
+    配置生效后，在任意终端窗口直接输入 `agy` 都会自动挂载透明代理！
+- **重要提示（账号体系共用）**：
+  `agy` 与 Antigravity IDE 客户端完全共享同一套 Google 登录凭据（存放在 `~/.antigravity` 等目录中）。**最省心的做法是先在代理启动的 Antigravity IDE TUN 副本中点一次“Sign in with Google”完成登录**；之后无论是通过启动器还是通过别名运行 `agy`，它都会自动识别并复用已有凭据，无需在命令行重复登录。
+
+### 6. 请求模型时报 `streamGenerateContent... connection reset by peer` 或 `EOF`？
+
+- **原因分析**：
+  1. **报错包含 `read tcp 127.0.0.1:...->127.0.0.1:端口: connection reset by peer`**：
+     目标地址指向本地代理端口（如 `127.0.0.1:10808`），说明**透明代理已经生效**，但本地代理客户端（如 Xray / v2rayN / Clash）向应用返回了 TCP RST 重置。常见于上游代理节点网络瞬时丢包抖动、节点重启，或节点对长连接流式 SSE 断开。直接重新发送一次提问或在代理客户端切换稳定节点即可。
+  2. **报错 `streamGenerateContent... EOF` 或 `i/o timeout`（无本地代理端口信息）**：
+     说明当前运行的终端会话**未加载透明代理动态库**（例如在一个旧终端窗口中直接运行了 `agy`）。此时请求直连 Google 公网 IP（如 `172.217.x.x`），被 GFW 拦截挂起 60 秒后超时断开返回 `EOF`。
+- **解决方法**：
+  - 先按 `Ctrl+C` 退出当前未挂代理的会话；
+  - 改用 `./Antigravity-Proxy.command agy` 运行，或在 `~/.zshrc` 中添加别名：
+    ```bash
+    echo 'alias agy="$HOME/Applications/Antigravity-Proxy-macOS/Antigravity-Proxy.command agy"' >> ~/.zshrc
+    source ~/.zshrc
+    ```
+  - 重新打开终端运行 `agy -p "hi"` 测试，即可正常收到回复。
 
 ---
 

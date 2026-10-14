@@ -6,7 +6,7 @@ CXX_DEFINES =
 
 CXX_INCLUDES = -I/Users/mac/Documents/Code-Program/antigravity-proxy/src -I/Users/mac/Documents/Code-Program/antigravity-proxy/include
 
-CXX_FLAGSarm64 = -O3 -DNDEBUG -std=gnu++17 -arch arm64
+CXX_FLAGSx86_64 = -O3 -DNDEBUG -std=gnu++17 -arch x86_64
 
-CXX_FLAGS = -O3 -DNDEBUG -std=gnu++17 -arch arm64
+CXX_FLAGS = -O3 -DNDEBUG -std=gnu++17 -arch x86_64
 
