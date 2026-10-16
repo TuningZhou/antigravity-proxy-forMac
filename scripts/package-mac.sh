@@ -14,9 +14,9 @@ set -euo pipefail
 # 用法：
 #   ./scripts/package-mac.sh                         # 自动读取 Git tag / VERSION，构建本机架构
 #   ./scripts/package-mac.sh --arch universal2       # Universal 2 通用二进制 (Apple Silicon + Intel)
-#   ./scripts/package-mac.sh --arch x64              # 仅 Intel (x86_64)
 #   ./scripts/package-mac.sh --arch arm64            # 仅 Apple Silicon (arm64)
-#   ./scripts/package-mac.sh --arch all              # 批量打包 universal2 和 x64
+#   ./scripts/package-mac.sh --arch x64              # 仅 Intel (x86_64)
+#   ./scripts/package-mac.sh --arch all              # 批量打包 universal2、arm64 与 x64 三种架构
 #   ./scripts/package-mac.sh --version 2.5.5         # 手动指定版本号
 # ==============================================================================
 
@@ -34,7 +34,7 @@ while [ $# -gt 0 ]; do
             [ $# -ge 2 ] || { echo "[错误] $1 需要一个版本号参数" >&2; exit 1; }
             VERSION="$2"; shift 2 ;;
         --arch)
-            [ $# -ge 2 ] || { echo "[错误] $1 需要一个架构参数(universal2/x64/arm64/all)" >&2; exit 1; }
+            [ $# -ge 2 ] || { echo "[错误] $1 需要一个架构参数(universal2/arm64/x64/all)" >&2; exit 1; }
             ARCH_OVERRIDE="$2"; shift 2 ;;
         -h|--help)
             sed -n '2,19p' "$0"
@@ -67,9 +67,11 @@ if [ "${ARCH_OVERRIDE:-}" = "all" ] || [ "${ARCH_OVERRIDE:-}" = "both" ]; then
     echo "=================================================="
     echo " Antigravity-Proxy macOS 批量打包"
     echo " 版本: ${TAG}"
-    echo " 包含: universal2 (双架构) 与 x64 (Intel 架构)"
+    echo " 包含: universal2 (双架构通用)、arm64 (Apple Silicon) 与 x64 (Intel)"
     echo "=================================================="
     "${BASH_SOURCE[0]}" --version "${VERSION}" --arch universal2
+    echo ""
+    "${BASH_SOURCE[0]}" --version "${VERSION}" --arch arm64
     echo ""
     "${BASH_SOURCE[0]}" --version "${VERSION}" --arch x64
     echo ""
@@ -473,8 +475,31 @@ check_environment() {
     case " ${lib_archs} " in
         *" ${host_arch} "*) : ;;
         *)
-            echo -e "${C_YELLOW}[警告] 动态库架构(${lib_archs})与本机(${host_arch})不匹配。${C_RESET}"
-            echo "请下载 universal2 通用版本或对应架构的安装包。"
+            echo -e "${C_RED}==================================================${C_RESET}"
+            echo -e "${C_RED}[错误] 架构不匹配，无法运行！${C_RESET}"
+            echo -e "${C_RED}==================================================${C_RESET}"
+            echo "当前安装包动态库架构:  [${lib_archs}]"
+            echo "当前 Mac 机器系统架构: [${host_arch}]"
+            echo ""
+            if [ "${host_arch}" = "arm64" ]; then
+                echo -e "说明: 您的 Mac 是 ${C_BOLD}Apple Silicon (M系列芯片/arm64)${C_RESET}，"
+                echo "      而当前解压的是纯 Intel (x64/x86_64) 架构的安装包。"
+                echo "      macOS 系统严格禁止将 x86_64 动态库注入到原生的 arm64 进程中，"
+                echo "      强行启动会导致应用被系统 dyld 拦截并崩溃 (SIGABRT Code 9)。"
+                echo ""
+                echo "解决办法: 请使用适合本机的版本："
+                echo "  1) antigravity-proxy-v${VERSION:-2.5.5}-mac-arm64.zip (推荐，原生 Apple Silicon 版)"
+                echo "  2) antigravity-proxy-v${VERSION:-2.5.5}-mac-universal2.zip (通用双架构版)"
+            else
+                echo -e "说明: 您的 Mac 是 ${C_BOLD}Intel (x86_64)${C_RESET} 芯片，"
+                echo "      而当前解压的是 Apple Silicon (arm64) 架构的安装包。"
+                echo ""
+                echo "解决办法: 请使用适合本机的版本："
+                echo "  1) antigravity-proxy-v${VERSION:-2.5.5}-mac-x64.zip (推荐，Intel 专用版)"
+                echo "  2) antigravity-proxy-v${VERSION:-2.5.5}-mac-universal2.zip (通用双架构版)"
+            fi
+            echo -e "${C_RED}==================================================${C_RESET}"
+            return 1
             ;;
     esac
     return 0
@@ -816,6 +841,27 @@ launch_app() {
     preflight_proxy_reachable "${CONFIG}" || return 1
     ensure_app_ready "${app_dir}" || return 1
     exe="$(resolve_app_executable "${EFFECTIVE_APP}")"
+
+    # 架构兼容性检查：确保目标应用与代理动态库架构匹配，避免 dyld 抛出 SIGABRT (DYLD Code 9)
+    if [ -n "${exe}" ] && [ -f "${exe}" ]; then
+        local app_archs dylib_archs match=0 a
+        app_archs="$(lipo -archs "${exe}" 2>/dev/null || echo "")"
+        dylib_archs="$(lipo -archs "${DYLIB}" 2>/dev/null || echo "")"
+        for a in ${dylib_archs}; do
+            case " ${app_archs} " in
+                *" ${a} "*) match=1; break ;;
+            esac
+        done
+        if [ "${match}" -eq 0 ]; then
+            echo -e "${C_RED}[严重错误] 目标应用与代理动态库架构不兼容！${C_RESET}"
+            echo "       目标应用架构:   [${app_archs}]"
+            echo "       代理动态库架构: [${dylib_archs}]"
+            echo "       强制注入会被 macOS dyld 直接终止并崩溃 (DYLD Code 9)。"
+            echo "       请使用 universal2 通用双架构版或与当前应用匹配的安装包。"
+            return 1
+        fi
+    fi
+
     preflight_restart_running_copy "${EFFECTIVE_APP}" || return 1
 
     echo -e "${C_GREEN}[启动] 正在以透明代理模式启动 Antigravity（代理专用副本）...${C_RESET}"
@@ -840,8 +886,8 @@ launch_agy() {
         return 1
     fi
     ensure_patch "${bin}" || return 1
-    echo -e "${C_GREEN}[启动] agy 透明代理模式: ${bin} $*${C_RESET}"
-    echo ""
+    [ -t 2 ] && echo -e "${C_GREEN}[启动] agy 透明代理模式: ${bin} $*${C_RESET}" >&2
+    [ -t 2 ] && echo "" >&2
     DYLD_INSERT_LIBRARIES="${DYLIB}" DYLD_FORCE_FLAT_NAMESPACE=1 exec "${bin}" "$@"
 }
 
@@ -1203,21 +1249,32 @@ agy 是 Antigravity 的命令行 Agent。透明代理是通过动态库注入生
 启动器启动的进程生效，并不是系统全局 VPN/TUN 网卡。在系统自带终端新建窗口直接
 敲 agy 时未挂载代理，连接 Google OAuth 服务器会报超时错误：
 （token exchange failed: Post "https://oauth2.googleapis.com/token": dial tcp ...:443: i/o timeout）。
-推荐使用以下方法让 agy 走代理：
-  1. 通过启动器直接运行（免配置）：
-     · 菜单运行：双击 Antigravity-Proxy.command，在菜单选 2（agy 命令行）；
-     · 命令行运行：在终端执行 ./Antigravity-Proxy.command agy [参数...]
-       （例如：./Antigravity-Proxy.command agy -i 或 agy -p "问题"）。
-  2. 在 ~/.zshrc 添加别名（实现任意新建终端直接敲 agy）：
-     在终端执行以下命令将别名写入 ~/.zshrc：
-       echo 'alias agy="\$HOME/Applications/Antigravity-Proxy-macOS/Antigravity-Proxy.command agy"' >> ~/.zshrc
-       source ~/.zshrc
-     （注：若解压位置不是 ~/Applications，请修改为实际的 Antigravity-Proxy.command 路径；
-       若使用 scripts/install-mac.sh 全局安装过，也可写 alias agy="antigravity-proxy agy"）。
-  3. 关于账号登录（共用凭据）：
+
+★ 普通用户最推荐的“原生体验”用法（敲 agy 直接用）：
+  在终端中执行以下命令（一劳永逸写入 ~/.zshrc 并立即生效）：
+    echo 'alias agy="\$HOME/Applications/Antigravity-Proxy-macOS/Antigravity-Proxy.command agy"' >> ~/.zshrc
+    source ~/.zshrc
+  配置完成后，在任意新建终端窗口直接输入 agy 回车，即可进入交互式对话！
+  同时也支持 agy -p "你的问题"（单次运行）或 agy changelog 等所有命令。
+
+★ 核心简要原理与自动自愈机制：
+  1. 为什么不能直接直连？
+     Google 官方分发的 agy 启用了 macOS Hardened Runtime，系统默认禁止任何第三方
+     动态库注入；并且官方后台会频繁自动静默升级覆盖 agy 二进制。
+  2. 为什么别名推荐指向启动器？
+     启动器内置毫秒级“自愈补丁”功能：每次启动时自动检查 agy 的签名状态，若检测到
+     官方刚刚静默更新了二进制，会在 0.1 秒内自动完成本地 ad-hoc 重签名补丁，彻底
+     免除手动打补丁的繁琐，永不失效！
+  3. 流量透明重定向：
+     启动器通过 DYLD_INSERT_LIBRARIES 在底层拦截 TCP connect 套接字，将 agy 的全部
+     流量（包括 OAuth 与 Gemini/CloudCode 接口）无缝转入本机 SOCKS5 代理。
+  4. 账号凭据共享：
      agy 与 Antigravity IDE 客户端完全共享同一套 Google 登录凭据（存放在
      ~/.antigravity 等目录）。只要你在代理启动的 Antigravity IDE TUN 副本中
-     成功登录过一次，agy 就会自动复用已有凭据，无需且不建议在命令行重复登录。
+     成功登录过一次，agy 就会自动复用已有凭据，无需且无法在命令行重复登录。
+  5. 管道友好：
+     启动提示已重定向至 stderr，管道（如 agy changelog | grep ...）与脚本捕获时
+     stdout 保持 100% 干净标准。
 
 【常见问题】
 1. 不要用 macOS 自带的 /usr/bin/curl 测试注入效果——SIP 系统完整性
@@ -1232,6 +1289,11 @@ agy 是 Antigravity 的命令行 Agent。透明代理是通过动态库注入生
 4. 程序坞里出现两个 Antigravity 图标怎么区分？
    代理副本的显示名带“TUN”后缀（访达文件名也是），请认准
    “Antigravity IDE TUN”启动；不带 TUN 的官方原件不走代理。
+5. 提问模型时偶发报 streamGenerateContent EOF 或 connection reset by peer？
+   · 原因 1：上游代理节点网络波动、切换服务器 IP 或对 SSE 长连接瞬时截断；
+   · 原因 2：Google 官方 CloudCode 服务端瞬时负载过高或排队（503 Unavailable）；
+   · 原因 3：若在新开终端直接敲原版 agy（未配置 alias），直连被墙拦截超时导致 EOF。
+   解决办法：直接重新输入一次提问即可（网络恢复后即正常）；若频繁出现，在梯子客户端中切换为延迟低、连接稳定的优质节点。
 
 【如何卸载？】
 - 删除代理环境：把“应用程序”文件夹里的“Antigravity IDE TUN.app”
