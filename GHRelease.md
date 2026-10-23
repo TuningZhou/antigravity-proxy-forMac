@@ -74,10 +74,10 @@
 
 1. **准备工作**：
    确保本地代理软件（如 v2rayN、Clash 等）已开启（默认监听 SOCKS5 `127.0.0.1:10808`；若使用 Clash 默认混合端口 `7890`，请在包内 `config.json` 中将 `port` 改为 `7890`）。
-2. **桌面端（Antigravity IDE）部署**：
+2. **桌面端（Antigravity IDE / Antigravity )部署**：
    - 下载并解压 `antigravity-proxy-v2.5.5-ide-win-x64.zip`。
-   - 将包内的 `version.dll` 与 `config.json` 复制到 Antigravity IDE 安装目录（即 `Antigravity.exe` 同级目录）。
-   - 直接启动 `Antigravity.exe`，网络请求即刻自动走代理。
+   - 将包内的 `version.dll` 与 `config.json` 复制到 Antigravity IDE / Antigravity 安装目录（即 Antigravity IDE.exe 或 Antigravity.exe 同级目录）。
+   - 直接启动 Antigravity IDE.exe 或 Antigravity.exe，网络请求即刻自动走代理。
 3. **命令行端（Antigravity CLI / `agy`）部署**：
    - 下载并解压 `antigravity-proxy-v2.5.5-cli-win-x64.zip`。
    - 按键盘 <kbd>Win</kbd> + <kbd>R</kbd>，输入 `%LOCALAPPDATA%\agy\bin` 并按回车，直达 `agy.exe` 所在目录。
