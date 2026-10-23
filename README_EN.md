@@ -17,13 +17,51 @@
 </p>
 
 <p align="center">
-  <a href="README.md">🇨🇳 中文版</a>
+  <a href="README.md">🇨🇳 中文版</a> |
+  <a href="README_RU.md">🇷🇺 Русская версия</a>
 </p>
+
+---
+
+## 🛠️ Quick Installation & Usage Summary
+
+> 💡 **Quick 2-Step Setup**: Download the release package for your operating system ([GitHub Releases](https://github.com/TuningZhou/antigravity-proxy-forMac/releases)) and deploy it to either the Desktop IDE or Command-line CLI (`agy`).
+
+### 🍎 macOS Users (Recommended Daily Workflow)
+
+1. **Download & Place**:
+   Download `antigravity-proxy-v2.5.5-mac-universal2.zip` (Universal binary for both Apple Silicon M1~M4 and Intel Mac) and unpack it. Move the extracted `Antigravity-Proxy-macOS` folder to `~/Applications/`.
+2. **Start Your Proxy**:
+   Ensure your local proxy client (e.g., Surge, Clash, v2ray) is running (default SOCKS5: `127.0.0.1:10808` or mixed port `7890`).
+3. **Launch Desktop IDE**:
+   Double-click `Antigravity-Proxy.command`, choose **1**, and let it prepare and launch the `Antigravity IDE TUN` patched copy. Click **Sign in with Google** inside the copy to log in.
+4. **One-Time Setup for Command-line `agy`**:
+   Run the following command once in your terminal to create an alias:
+   ```bash
+   echo 'alias agy="$HOME/Applications/Antigravity-Proxy-macOS/Antigravity-Proxy.command agy"' >> ~/.zshrc
+   source ~/.zshrc
+   ```
+   After adding the alias, simply type `agy` and press Enter in any terminal window to enjoy transparent proxy and auto-healing patch protection against silent updates!
+
+### 🪟 Windows Users (Quick Setup Guide)
+
+1. **Prerequisites**:
+   Ensure your local proxy software (e.g., v2rayN, Clash) is running (default SOCKS5: `127.0.0.1:10808`; if using Clash's default mixed port `7890`, change `"port": 10808` to `7890` in `config.json`).
+2. **Desktop IDE (Antigravity IDE) Deployment**:
+   - Download and unpack `antigravity-proxy-v2.5.5-ide-win-x64.zip`.
+   - Copy `version.dll` and `config.json` into the Antigravity IDE directory (the same folder as `Antigravity.exe`).
+   - Launch `Antigravity.exe` normally; traffic will automatically be routed through the proxy.
+3. **Command-Line CLI (Antigravity CLI / `agy`) Deployment**:
+   - Download and unpack `antigravity-proxy-v2.5.5-cli-win-x64.zip`.
+   - Press <kbd>Win</kbd> + <kbd>R</kbd>, enter `%LOCALAPPDATA%\agy\bin`, and press Enter to instantly open the folder where `agy.exe` is installed.
+   - Copy all **3 files** (`dbghelp.dll`, `antigravity_proxy.dll`, `config.json`) into this folder (⚠️ **Do NOT copy `version.dll` from the IDE package**).
+   - Run `agy` in any terminal (PowerShell or CMD) to immediately start using the transparent proxy and fix `token exchange timeout` issues!
 
 ---
 
 ## 📖 Table of Contents
 
+- [🛠️ Quick Installation & Usage Summary](#️-quick-installation--usage-summary)
 - [📖 Introduction](#-introduction)
 - [🚨 Read This First: Check IP Before DLL](#-read-this-first-check-ip-before-dll)
 - [⚡ Antigravity Quick Start](#-antigravity-quick-start)

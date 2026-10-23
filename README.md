@@ -23,8 +23,45 @@
 
 ---
 
+## 🛠️ 快速安装使用摘要
+
+> 💡 **两步极速上手**：下载对应系统的发布包（[GitHub Releases](https://github.com/TuningZhou/antigravity-proxy-forMac/releases)），按需部署到桌面端（IDE）或命令行（CLI / `agy`）。
+
+### 🍎 macOS 用户（推荐日常姿势）
+
+1. **下载与放置**：
+   下载 `antigravity-proxy-v2.5.5-mac-universal2.zip`（推荐通用双架构包，兼容 M1~M4 及 Intel Mac）解压，建议将解压出的 `Antigravity-Proxy-macOS` 文件夹移动到 `~/Applications/` 目录。
+2. **启动代理**：
+   确保本地代理客户端已开启（如 Surge、Clash、v2ray，默认监听 SOCKS5 `127.0.0.1:10808` 或混合端口 `7890`）。
+3. **桌面端启动（IDE）**：
+   双击 `Antigravity-Proxy.command` 选 **1**，按提示生成并启动 `Antigravity IDE TUN` 副本；在副本中点击 **Sign in with Google** 完成登录。
+4. **命令行 agy 终端一劳永逸配置**：
+   在系统终端执行一次以下命令（写入别名）：
+   ```bash
+   echo 'alias agy="$HOME/Applications/Antigravity-Proxy-macOS/Antigravity-Proxy.command agy"' >> ~/.zshrc
+   source ~/.zshrc
+   ```
+   配置别名后，新建任意终端窗口，直接输入 `agy` 回车即可开启交互对话，享受透明代理与抗更新自愈保护！
+
+### 🪟 Windows 用户（极简使用指引）
+
+1. **准备工作**：
+   确保本地代理软件（如 v2rayN、Clash 等）已开启（默认监听 SOCKS5 `127.0.0.1:10808`；若使用 Clash 默认混合端口 `7890`，请在包内 `config.json` 中将 `port` 改为 `7890`）。
+2. **桌面端（Antigravity IDE）部署**：
+   - 下载并解压 `antigravity-proxy-v2.5.5-ide-win-x64.zip`。
+   - 将包内的 `version.dll` 与 `config.json` 复制到 Antigravity IDE 安装目录（即 `Antigravity.exe` 同级目录）。
+   - 直接启动 `Antigravity.exe`，网络请求即刻自动走代理。
+3. **命令行端（Antigravity CLI / `agy`）部署**：
+   - 下载并解压 `antigravity-proxy-v2.5.5-cli-win-x64.zip`。
+   - 按键盘 <kbd>Win</kbd> + <kbd>R</kbd>，输入 `%LOCALAPPDATA%\agy\bin` 并按回车，直达 `agy.exe` 所在目录。
+   - 将包内的 **3 个文件**（`dbghelp.dll`、`antigravity_proxy.dll`、`config.json`）全部复制到该目录（⚠️ **切勿复制桌面端的 `version.dll`**）。
+   - 在任意终端（PowerShell 或 CMD）中直接运行 `agy` 即可畅享透明代理，彻底解决 `token exchange timeout` 登录超时！
+
+---
+
 ## 📖 目录 / Table of Contents
 
+- [🛠️ 快速安装使用摘要](#️-快速安装使用摘要)
 - [📖 项目介绍 / Introduction](#-项目介绍--introduction)
 - [🚨 先看这个：对话报错先排 IP / Read This First](#-先看这个对话报错先排-ip--read-this-first)
 - [⚡ Antigravity 快速开始 / Quick Start](#-antigravity-快速开始--quick-start)
