@@ -47,10 +47,10 @@
 
 1. **Подготовка**:
    Убедитесь, что ваш прокси-клиент (например, v2rayN, Clash) запущен (по умолчанию SOCKS5: `127.0.0.1:10808`; если используется стандартный порт Clash `7890`, измените значение `"port": 10808` на `7890` в `config.json`).
-2. **Развертывание для среды IDE (Antigravity IDE)**:
+2. **Развертывание для среды IDE (Antigravity IDE / Antigravity)**:
    - Скачайте и распакуйте `antigravity-proxy-v2.5.5-ide-win-x64.zip`.
-   - Скопируйте файлы `version.dll` и `config.json` в каталог установки Antigravity IDE (в ту же папку, где находится `Antigravity.exe`).
-   - Запустите `Antigravity.exe` — трафик будет автоматически направляться через прокси.
+   - Скопируйте файлы `version.dll` и `config.json` в каталог установки Antigravity IDE / Antigravity (в ту же папку, где находится `Antigravity IDE.exe` или `Antigravity.exe`).
+   - Запустите `Antigravity IDE.exe` или `Antigravity.exe` — трафик будет автоматически направляться через прокси.
 3. **Развертывание для консольной утилиты (Antigravity CLI / `agy`)**:
    - Скачайте и распакуйте `antigravity-proxy-v2.5.5-cli-win-x64.zip`.
    - Нажмите сочетание клавиш <kbd>Win</kbd> + <kbd>R</kbd>, введите `%LOCALAPPDATA%\agy\bin` и нажмите Enter, чтобы открыть папку с `agy.exe`.

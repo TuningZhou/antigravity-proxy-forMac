@@ -47,10 +47,10 @@
 
 1. **Prerequisites**:
    Ensure your local proxy software (e.g., v2rayN, Clash) is running (default SOCKS5: `127.0.0.1:10808`; if using Clash's default mixed port `7890`, change `"port": 10808` to `7890` in `config.json`).
-2. **Desktop IDE (Antigravity IDE) Deployment**:
+2. **Desktop IDE (Antigravity IDE / Antigravity) Deployment**:
    - Download and unpack `antigravity-proxy-v2.5.5-ide-win-x64.zip`.
-   - Copy `version.dll` and `config.json` into the Antigravity IDE directory (the same folder as `Antigravity.exe`).
-   - Launch `Antigravity.exe` normally; traffic will automatically be routed through the proxy.
+   - Copy `version.dll` and `config.json` into the Antigravity IDE / Antigravity directory (the same folder as `Antigravity IDE.exe` or `Antigravity.exe`).
+   - Launch Antigravity IDE.exe or Antigravity.exe normally; traffic will automatically be routed through the proxy.
 3. **Command-Line CLI (Antigravity CLI / `agy`) Deployment**:
    - Download and unpack `antigravity-proxy-v2.5.5-cli-win-x64.zip`.
    - Press <kbd>Win</kbd> + <kbd>R</kbd>, enter `%LOCALAPPDATA%\agy\bin`, and press Enter to instantly open the folder where `agy.exe` is installed.
