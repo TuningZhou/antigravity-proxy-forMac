@@ -663,6 +663,24 @@ namespace Core {
         std::string childInjectionMode = "filtered";
         std::vector<std::string> childInjectionExclude; // 进程排除列表（大小写不敏感，支持子串匹配）
         std::vector<std::string> targetProcesses; // 目标进程列表 (空=全部)
+        // 宿主进程全量网络 Hook 白名单（大小写不敏感，支持子串匹配）。
+        // 默认宿主进程（Antigravity.exe / Antigravity IDE.exe）仅安装进程创建 Hook；
+        // 列入此列表的宿主进程将恢复全量网络 Hook（用于 Antigravity IDE 这类
+        // 在 Electron 主进程内完成 OAuth 令牌交换的产品）。
+        std::vector<std::string> hostFullHooks;
+
+        // 检查宿主进程是否被配置为全量网络 Hook (大小写不敏感)
+        bool ShouldEnableHostNetworkHooks(const std::string& processName) const {
+            if (hostFullHooks.empty()) return false;
+            const std::string lowerName = ToLowerCopy(processName);
+            for (const auto& item : hostFullHooks) {
+                const std::string lowerItem = ToLowerCopy(item);
+                if (lowerItem.empty()) continue;
+                if (lowerName == lowerItem) return true;
+                if (lowerName.find(lowerItem) != std::string::npos) return true;
+            }
+            return false;
+        }
 
         // 检查进程名是否在目标列表中 (大小写不敏感)
         bool ShouldInject(const std::string& processName) const {
@@ -1064,12 +1082,26 @@ namespace Core {
                     Logger::Info("已加载目标进程列表, 共 " + std::to_string(targetProcesses.size()) + " 项");
                 }
 
+                // 宿主进程全量网络 Hook 白名单（默认空=宿主仅注入器模式，保持历史行为）
+                hostFullHooks.clear();
+                if (j.contains("host_full_hooks") && j["host_full_hooks"].is_array()) {
+                    for (const auto& item : j["host_full_hooks"]) {
+                        if (item.is_string()) {
+                            hostFullHooks.push_back(item.get<std::string>());
+                        }
+                    }
+                    if (!hostFullHooks.empty()) {
+                        Logger::Info("已加载宿主全量 Hook 白名单, 共 " + std::to_string(hostFullHooks.size()) + " 项");
+                    }
+                }
+
                 Logger::Info("配置: proxy=" + proxy.host + ":" + std::to_string(proxy.port) +
                              " type=" + proxy.type +
                              ", fake_ip=" + std::string(fakeIp.enabled ? "true" : "false") +
                              ", child_injection=" + std::string(childInjection ? "true" : "false") +
                              ", child_injection_mode=" + childInjectionMode +
                              ", child_injection_exclude=" + std::to_string(childInjectionExclude.size()) +
+                             ", host_full_hooks=" + std::to_string(hostFullHooks.size()) +
                              ", traffic_logging=" + std::string(trafficLogging ? "true" : "false") +
                              ", diagnostics.agent_ip_probe=" + std::string(diagnosticsAgentIpProbe ? "true" : "false") +
                              ", ui.load_notify=" + uiLoadNotify +

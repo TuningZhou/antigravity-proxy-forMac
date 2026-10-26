@@ -350,9 +350,15 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved) {
         }
 
         const std::string processName = GetCurrentProcessBaseName();
-        const bool enableNetworkHooks = !Hooks::IsAntigravityHostProcessName(processName);
+        // 宿主进程默认仅注入器模式；若被 host_full_hooks 白名单命中（如 Antigravity IDE
+        // 在主进程内完成 OAuth 令牌交换），则恢复全量网络 Hook。
+        const bool isHostProcess = Hooks::IsAntigravityHostProcessName(processName);
+        const bool hostFullHook = isHostProcess &&
+                                  Core::Config::Instance().ShouldEnableHostNetworkHooks(processName);
+        const bool enableNetworkHooks = !isHostProcess || hostFullHook;
         Core::Logger::Info(enableNetworkHooks
-            ? "当前进程 " + processName + " 使用全量模式：安装网络与进程创建 Hook"
+            ? "当前进程 " + processName + " 使用全量模式：安装网络与进程创建 Hook" +
+                  (hostFullHook ? " (host_full_hooks 白名单命中)" : "")
             : "当前进程 " + processName + " 使用注入器模式：仅安装进程创建 Hook，跳过网络 Hook");
         Hooks::Install(enableNetworkHooks);
         MaybeShowLoadNotifyAsync(true);

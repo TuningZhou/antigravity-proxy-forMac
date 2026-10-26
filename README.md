@@ -345,6 +345,8 @@ Antigravity 2.0 新增/改名了关键进程，默认配置已覆盖：
 
 如果你是从旧版本手动迁移 `config.json`，请确认 `child_injection` 仍为 `true`，并把上面的目标进程列表同步进去。2.0 环境如果存在多个启动目录，也要把 `version.dll` 和 `config.json` 放到实际启动的 Antigravity/IDE 目录中。
 
+> **Antigravity IDE 登录说明**：Antigravity IDE 与 Antigravity 是两个不同产品。Antigravity IDE 在 Electron 主进程内完成 Google OAuth 令牌交换（浏览器授权成功后 IDE 仍提示 "There was an error with your authentication" 即是此原因），v2.5.6 起默认配置 `host_full_hooks: ["Antigravity IDE.exe"]` 为其主进程恢复全量网络 Hook；`Antigravity.exe` 的登录流量走 `language_server.exe`，无需也不应加入该列表。
+
 Antigravity 更新后可能清理安装目录里的劫持文件；如果更新后不走代理，请重新复制这些文件。若代理软件区分 mixed-port 和 SOCKS5 端口，也要确认 `proxy.type` 和 `proxy.port` 匹配本机实际监听端口。
 
 更多现场记录见 `docs/antigravity-2.0-issue-85.md`。
@@ -851,6 +853,9 @@ target_link_libraries(version PRIVATE ws2_32)
         "Antigravity IDE.exe",
         "node.exe"
     ],
+    "host_full_hooks": [
+        "Antigravity IDE.exe"
+    ],
     "proxy_rules": {
         "allowed_ports": [80, 443],
         "dns_mode": "direct",
@@ -888,6 +893,7 @@ target_link_libraries(version PRIVATE ws2_32)
 | `traffic_logging` | bool | `false` | 是否记录流量日志 |
 | `diagnostics.agent_ip_probe` | bool | `false` | 是否探测代理出口 IP 并关联 location 日志 |
 | `target_processes` | array | `[]` | 目标进程列表 (空=全部) |
+| `host_full_hooks` | array | `[]` | 宿主进程全量网络 Hook 白名单（大小写不敏感，支持子串匹配）。宿主进程默认仅安装进程创建 Hook；Antigravity IDE 在 Electron 主进程内完成 Google OAuth 令牌交换，需列入本表恢复宿主网络 Hook 才能登录，`Antigravity.exe` 无需加入 |
 | `proxy_rules.allowed_ports` | array | `[80, 443]` | 端口白名单 (空=全部) |
 | `proxy_rules.dns_mode` | string | `"direct"` | DNS策略: `direct`(直连) / `proxy`(走代理) |
 | `proxy_rules.ipv6_mode` | string | `"proxy"` | IPv6策略: `proxy`(走代理) / `direct`(直连) / `block`(阻止) |

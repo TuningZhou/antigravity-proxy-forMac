@@ -28,7 +28,7 @@ param(
 # ============================================================
 # 版本信息 (在此处统一管理版本号)
 # ============================================================
-$Version = "2.5.5"
+$Version = "2.5.6"
 
 # ============================================================
 # 辅助函数
@@ -418,6 +418,9 @@ $configJson = @{
     # 目标进程列表（空数组=注入所有子进程）
     # 兼容 Antigravity 2.0 新增的 language_server.exe，同时覆盖 Antigravity CLI 的 agy.exe。
     target_processes        = @("agy.exe", "language_server.exe", "language_server_windows", "Antigravity.exe", "Antigravity IDE.exe", "node.exe")
+    # 宿主进程全量网络 Hook 白名单（大小写不敏感，支持子串匹配，默认空=宿主仅注入器模式）
+    # Antigravity IDE 在 Electron 主进程内完成 OAuth 令牌交换，必须恢复宿主网络 Hook 才能登录
+    host_full_hooks         = @("Antigravity IDE.exe")
     proxy_rules             = @{
         # 端口白名单: 仅代理 HTTP(80) 和 HTTPS(443)，空数组=代理所有端口
         allowed_ports = @(80, 443)

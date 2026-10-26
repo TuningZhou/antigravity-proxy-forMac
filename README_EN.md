@@ -342,6 +342,8 @@ Antigravity 2.0 added/renamed key processes. The default config now covers:
 
 If you are migrating an old `config.json`, make sure `child_injection` is still `true` and sync the target process list above. If your 2.0 install has more than one launch directory, place `version.dll` and `config.json` in the actual Antigravity/IDE directory being launched.
 
+> **Antigravity IDE login note**: Antigravity IDE and Antigravity are two different products. Antigravity IDE performs the Google OAuth token exchange inside the Electron main process (this is why the IDE still shows "There was an error with your authentication" after the browser reports success). Since v2.5.6 the default config sets `host_full_hooks: ["Antigravity IDE.exe"]` to restore full network hooks on its main process. `Antigravity.exe` routes login traffic through `language_server.exe`, so it must NOT be added to this list.
+
 Antigravity updates may clean injected files from the install directory. If proxying stops after an update, copy the files again. If your proxy client separates mixed-port and SOCKS5 ports, make sure `proxy.type` and `proxy.port` match the actual local listener.
 
 More field notes: `docs/antigravity-2.0-issue-85.md`.
@@ -822,6 +824,9 @@ Edit `config.json`:
         "Antigravity.exe",
         "Antigravity IDE.exe",
         "node.exe"
+    ],
+    "host_full_hooks": [
+        "Antigravity IDE.exe"
     ]
 }
 ```
@@ -854,6 +859,7 @@ Launch the target application, done! 🎉
 | `child_injection` | bool | `true` | Inject into child processes |
 | `traffic_logging` | bool | `false` | Enable traffic logging |
 | `target_processes` | array | `[]` | Target process list (empty = all) |
+| `host_full_hooks` | array | `[]` | Whitelist for restoring full network hooks on host processes (case-insensitive, substring match). Host processes normally only get process-creation hooks; Antigravity IDE performs the Google OAuth token exchange inside the Electron main process, so it must be listed here to log in. `Antigravity.exe` does not need it |
 | `proxy_rules.routing.enabled` | bool | `true` | Enable rule-based routing |
 | `proxy_rules.routing.priority_mode` | string | `"order"` | Priority: `order`(list order) / `number`(priority) |
 | `proxy_rules.routing.default_action` | string | `"proxy"` | Default action when no rule matches |

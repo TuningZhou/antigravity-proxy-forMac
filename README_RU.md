@@ -341,6 +341,8 @@ agy
 
 Если вы переносите старый `config.json`, убедитесь, что `child_injection` по-прежнему имеет значение `true`, и синхронизируйте приведенный выше список целевых процессов. Если в установленной версии 2.0 есть несколько каталогов запуска, поместите `version.dll` и `config.json` в фактически используемый каталог Antigravity/IDE.
 
+> **Примечание по входу в Antigravity IDE**: Antigravity IDE и Antigravity — это два разных продукта. Antigravity IDE выполняет обмен токенов Google OAuth в главном процессе Electron (именно поэтому IDE показывает "There was an error with your authentication", хотя браузер сообщает об успехе). Начиная с v2.5.6 конфигурация по умолчанию содержит `host_full_hooks: ["Antigravity IDE.exe"]`, восстанавливая полные сетевые хуки на его главном процессе. `Antigravity.exe` направляет трафик входа через `language_server.exe`, поэтому его НЕ нужно добавлять в этот список.
+
 При обновлении Antigravity внедренные файлы могут быть удалены из каталога установки. Если после обновления проксирование прекратилось, скопируйте файлы еще раз. Если прокси-клиент разделяет смешанный порт и порт SOCKS5, убедитесь, что `proxy.type` и `proxy.port` соответствуют реально прослушиваемой локальной конечной точке.
 
 Дополнительные практические заметки: `docs/antigravity-2.0-issue-85.md`.
@@ -821,6 +823,9 @@ target_link_libraries(version PRIVATE ws2_32)
         "Antigravity.exe",
         "Antigravity IDE.exe",
         "node.exe"
+    ],
+    "host_full_hooks": [
+        "Antigravity IDE.exe"
     ]
 }
 ```
@@ -853,6 +858,7 @@ target_link_libraries(version PRIVATE ws2_32)
 | `child_injection` | bool | `true` | Внедрять DLL в дочерние процессы |
 | `traffic_logging` | bool | `false` | Включить журналирование трафика |
 | `target_processes` | array | `[]` | Список целевых процессов (пустой означает все процессы) |
+| `host_full_hooks` | array | `[]` | Белый список для восстановления полных сетевых хуков на хост-процессах (без учёта регистра, поддерживает подстроку). По умолчанию хост-процессы получают только хуки создания процессов; Antigravity IDE выполняет обмен токенов Google OAuth в главном процессе Electron, поэтому его нужно добавить сюда для входа. `Antigravity.exe` добавлять не требуется |
 | `proxy_rules.routing.enabled` | bool | `true` | Включить маршрутизацию по правилам |
 | `proxy_rules.routing.priority_mode` | string | `"order"` | Приоритет: `order` (порядок списка) или `number` (числовой приоритет) |
 | `proxy_rules.routing.default_action` | string | `"proxy"` | Действие по умолчанию, если правило не найдено |
