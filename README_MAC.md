@@ -26,14 +26,14 @@
 
 ## 一、核心实现原理
 
-| 平台机制对比         | Windows 端                                                      | macOS 端                                                                       |
-| :------------------- | :-------------------------------------------------------------- | :----------------------------------------------------------------------------- |
-| **加载机制**   | 符号导出劫持 (`version.dll` / `dbghelp.dll`)                | 原生动态库注入 (`DYLD_INSERT_LIBRARIES`)                                     |
+| 平台机制对比         | Windows 端                                                      | macOS 端                                                                                                                                                             |
+| :------------------- | :-------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **加载机制**   | 符号导出劫持 (`version.dll` / `dbghelp.dll`)                | 原生动态库注入 (`DYLD_INSERT_LIBRARIES`)                                                                                                                           |
 | **Hook 引擎**  | MinHook (内联机器码 Patch)                                      | Apple 官方原生 Dyld 符号重定向 (`__DATA,__interpose`)；原生函数指针通过**遍历 dyld 镜像 Mach-O 符号表**定位（不使用 `dlsym(RTLD_NEXT)`，原因见第一章末注） |
-| **网络拦截**   | `connect`, `WSAConnect`, `getaddrinfo`, `gethostbyname` | `connect`, `getaddrinfo`, `gethostbyname`, `close`                     |
-| **子进程注入** | Hook`CreateProcessA/W` 启动挂起 + 注入                        | Hook`posix_spawn`, `posix_spawnp`, `execve` 自动传播环境变量             |
-| **跨进程共享** | Windows 具名内存映射 (`CreateFileMappingW`)                   | POSIX 文件内存映射 (`mmap` + `fcntl` 文件锁)                               |
-| **安全降级**   | 配置读取失败自动进入 BYPASS 模式                                | 配置读取失败自动进入 BYPASS 模式                                               |
+| **网络拦截**   | `connect`, `WSAConnect`, `getaddrinfo`, `gethostbyname` | `connect`, `getaddrinfo`, `gethostbyname`, `close`                                                                                                           |
+| **子进程注入** | Hook`CreateProcessA/W` 启动挂起 + 注入                        | Hook`posix_spawn`, `posix_spawnp`, `execve` 自动传播环境变量                                                                                                   |
+| **跨进程共享** | Windows 具名内存映射 (`CreateFileMappingW`)                   | POSIX 文件内存映射 (`mmap` + `fcntl` 文件锁)                                                                                                                     |
+| **安全降级**   | 配置读取失败自动进入 BYPASS 模式                                | 配置读取失败自动进入 BYPASS 模式                                                                                                                                     |
 
 macOS 端完全采用 Apple 官方规范的 **Dyld 符号重定向 (Dyld Interposing)** 技术，无需在内存中修改代码段可执行权限（W^X 机制兼容），原生支持 Apple Silicon 的 Hardened Runtime 与 ARM64 PAC 安全特性，稳定且不崩溃。
 
@@ -50,13 +50,13 @@ macOS 端完全采用 Apple 官方规范的 **Dyld 符号重定向 (Dyld Interpo
 
 **使用思路完全一样（准备代理 → 配置端口 → 启动 Antigravity），但"启动方式"不一样。**
 
-| 对比项 | Windows 电脑 | Mac 电脑 |
-| :--- | :--- | :--- |
-| 注入方式 | 把 `version.dll` 放到 `Antigravity.exe` 旁边，系统**自动加载** | 由启动器通过 `DYLD_INSERT_LIBRARIES` **临时注入** dylib |
-| 首次准备 | 复制文件到安装目录 | 下载解压即用；首次启动自动在官方 App **同目录复制一份副本**（命名为 `Antigravity TUN.app` / `Antigravity IDE TUN.app`），签名补丁只打在副本上，官方原件一个字节都不改 |
-| 日常启动 | **照常双击** Antigravity 图标即可 | **必须通过启动器启动**（见第 3 步），启动的是带 TUN 后缀的代理副本；直接点官方图标不走代理 |
-| IDE 升级后 | 可能要重新复制 DLL | 升级后首次启动会检测到版本不一致，按提示让启动器**重新复制+补丁副本**即可（原件始终不动） |
-| 子进程代理 | 自动注入 | 自动注入（`posix_spawn` / `execve` 自动传播；`language_server`（≤2.5.x）/ `~/.gemini/bin/agy`（2.6.0+）自动识别并注入） |
+| 对比项     | Windows 电脑                                                             | Mac 电脑                                                                                                                                                                        |
+| :--------- | :----------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 注入方式   | 把 `version.dll` 放到 `Antigravity.exe` 旁边，系统**自动加载** | 由启动器通过 `DYLD_INSERT_LIBRARIES` **临时注入** dylib                                                                                                                 |
+| 首次准备   | 复制文件到安装目录                                                       | 下载解压即用；首次启动自动在官方 App **同目录复制一份副本**（命名为 `Antigravity TUN.app` / `Antigravity IDE TUN.app`），签名补丁只打在副本上，官方原件一个字节都不改 |
+| 日常启动   | **照常双击** Antigravity 图标即可                                  | **必须通过启动器启动**（见第 3 步），启动的是带 TUN 后缀的代理副本；直接点官方图标不走代理                                                                                |
+| IDE 升级后 | 可能要重新复制 DLL                                                       | 升级后首次启动会检测到版本不一致，按提示让启动器**重新复制+补丁副本**即可（原件始终不动）                                                                                 |
+| 子进程代理 | 自动注入                                                                 | 自动注入（`posix_spawn` / `execve` 自动传播；`language_server`（≤2.5.x）/ `~/.gemini/bin/agy`（2.6.0+）自动识别并注入）                                                |
 
 > ⚠️ **最重要的一句话：Mac 上每次都要用启动器打开 Antigravity 才走代理——启动器运行的是同目录下的"Antigravity IDE TUN"副本；直接从"访达 / 启动台 / 程序坞"点开不带 TUN 的官方图标不会走代理。**
 >
@@ -66,11 +66,11 @@ macOS 端完全采用 Apple 官方规范的 **Dyld 符号重定向 (Dyld Interpo
 
 启动你的代理软件（Clash Verge、Surge、sing-box、V2RayU 等），确认本机监听端口：
 
-| 代理软件 | 常用端口 |
-| :--- | :--- |
+| 代理软件                         | 常用端口                   |
+| :------------------------------- | :------------------------- |
 | Clash Verge / Mihomo（混合端口） | `7890`（预编译包默认值） |
-| V2RayU / V2RayN（SOCKS5） | `10808` |
-| Surge（SOCKS5） | `6153` |
+| V2RayU / V2RayN（SOCKS5）        | `10808`                  |
+| Surge（SOCKS5）                  | `6153`                   |
 
 > 具体端口**一律以你代理软件设置界面里显示的为准**。可先在终端自测（可选）：
 >
@@ -127,6 +127,7 @@ open -e ~/.config/antigravity-proxy/config.json
 为了让补丁**不碰官方原件**，启动器采用"原件 + 代理副本"的方式，首次选菜单"1）启动"时自动完成：
 
 1. **复制副本**：在官方 App 的**同一文件夹**里用 `ditto` 完整复制一份，命名规则：
+
    - `Antigravity.app` → `Antigravity TUN.app`
    - `Antigravity IDE.app` → `Antigravity IDE TUN.app`
 
@@ -158,9 +159,9 @@ dylib 拦截到该包装脚本时会直接还原为 `language_server` 本体启�
 Google 在 **Antigravity IDE 2.6.0** 中把 AI 后端由 app 包内的 `language_server` 换成了
 **`agy`（Gemini CLI 内核，当前 1.4.9）**。这带来一个关键变化：**机器上会出现两份 agy**。
 
-| agy 路径 | 由谁安装 / 更新 | 用途 |
-| :--- | :--- | :--- |
-| `~/.local/bin/agy` | Antigravity CLI 官方安装器 + 后台 auto-updater | 你在终端敲 `agy` 时运行的那一份 |
+| agy 路径              | 由谁安装 / 更新                                                                           | 用途                              |
+| :-------------------- | :---------------------------------------------------------------------------------------- | :-------------------------------- |
+| `~/.local/bin/agy`  | Antigravity CLI 官方安装器 + 后台 auto-updater                                            | 你在终端敲 `agy` 时运行的那一份 |
 | `~/.gemini/bin/agy` | **Antigravity IDE 2.6.0 扩展自动下载**（遵循 Gemini CLI 的 `~/.gemini` 目录约定） | IDE 内嵌的 AI 后端，仅供 IDE 调用 |
 
 两份文件**独立更新、互不影响**，且都启用了 Hardened Runtime。旧版启动器只处理了终端 agy 与
@@ -196,6 +197,7 @@ v2.6.0 起已按 Windows 分支同样的思路修复（Windows 是把 shim 复�
 选 **2** 使用 agy 命令行（agy 1.2.x 起为 Agent CLI，详见下方命令示例）。
 
 > **两个 Antigravity 应用怎么选？** 本项目同时支持 **Antigravity**（`Antigravity.app`，Bundle ID `com.google.antigravity`，主程序名 `Antigravity`）与 **Antigravity IDE**（`Antigravity IDE.app`，Bundle ID `com.google.antigravity-ide`，主程序名 `Electron`）；两者共用同一套 Google 登录态。
+>
 > - 只装一个应用时，菜单 **1** 直接启动它，无需任何选择。
 > - 两个都装了时，菜单 **1** 会先弹出应用选择子菜单（`1) Antigravity IDE`、`2) Antigravity`，上次启动的应用会标注"上次使用"，直接回车即可）；选择会记在包目录 `.last-app`，作为下次默认项。首次使用、还没有记忆时同样会弹出该子菜单。
 > - 也可把任意一个官方 `.app` 直接拖到启动器图标上，启动的就是被拖入应用的 TUN 副本。
@@ -223,6 +225,7 @@ antigravity-proxy agy -i               # 交互式对话
 > 选择器语法：`ide` = Antigravity IDE；`classic`（或 `antigravity`）= Antigravity；也支持 `apps` 列出的**序号**与 `.app` 绝对路径。非交互环境（脚本/CI）下若同时装了两个应用又不给选择器，会报错并列出候选，不会替你猜。
 
 > ℹ️ **关于 agy 运行与登录**：
+>
 > 1. **账号共用**：`agy` 是 Antigravity 的命令行 Agent，账号体系与 IDE 客户端完全共用（`~/.antigravity` / IDE 登录态）。在 **Antigravity IDE 内登录一次**即可，`agy` 启动时会自动复用已有登录凭证，命令行无需也不再提供 `agy login` / `agy status`。
 > 2. **为什么新开终端直接敲 `agy` 报超时？** 本项目是进程级透明注入（`DYLD_INSERT_LIBRARIES`），并非全局 VPN。新开终端直接输入 `agy` 是直连网络，直连 Google 鉴权接口（`oauth2.googleapis.com`）会被 GFW 拦截报 `dial tcp ...:443: i/o timeout`。
 > 3. **正确运行 agy 走代理的方式**：
@@ -276,6 +279,7 @@ tail -n 30 ~/.local/lib/logs/proxy-*.log 2>/dev/null || tail -n 30 output-mac/lo
 **终端用户强烈推荐配置别名，实现“打开终端 → 敲 `agy` → 回车”的原生无感体验**：
 
 打开终端执行以下命令（一劳永逸写入 `~/.zshrc` 并立即生效）：
+
 ```bash
 echo 'alias agy="$HOME/Applications/Antigravity-Proxy-macOS/Antigravity-Proxy.command agy"' >> ~/.zshrc
 echo 'alias agygo="$HOME/Applications/Antigravity-Proxy-macOS/Antigravity-Proxy.command app"' >> ~/.zshrc
@@ -283,12 +287,14 @@ source ~/.zshrc
 ```
 
 **为什么推荐指向启动器而非直接指定 dylib？（核心简要原理）**：
+
 1. **自动自愈补丁（抗官方静默升级）**：Google 官方分发的 `agy` 启用了 macOS Hardened Runtime，系统默认禁止任何第三方动态库注入；并且官方后台会频繁自动更新覆盖 `~/.local/bin/agy`。如果直接写 `DYLD_INSERT_LIBRARIES`，一旦官方升级覆盖，注入就会默默失效并报超时。而启动器内置了**毫秒级自愈机制**，每次运行自动检测签名，若检测到官方刚更新了二进制，会在 0.1 秒内自动完成本地重签名补丁，彻底实现免维护！
 2. **底层 Socket 拦截**：`agy` 与 Google OAuth 鉴权及 Gemini 模型接口通信时，内部绕过了普通环境变量代理（如 `ALL_PROXY`），启动器通过 `DYLD_INSERT_LIBRARIES` 在底层无缝拦截 TCP `connect` 套接字并转入本机 SOCKS5 代理。
 3. **账号凭据全自动复用**：`agy` 共享 Antigravity IDE 登录态（位于 `~/.antigravity` 等目录）。先在代理启动的 IDE 副本中完成一次“Sign in with Google”，终端里敲 `agy` 便会自动识别已有凭据，无需且无法在命令行重复登录。
 4. **管道输出纯净无干扰**：启动器的辅助提示（`[启动] agy 透明代理模式...`）已优化为定向输出到 `stderr`，当您使用脚本、管道（如 `agy changelog | grep ...`）或重定向输出时，`stdout` 保持 100% 干净标准。
 
 配置完成后：
+
 - **普通对话**：直接在终端敲 `agy` 回车，即可进入全功能交互式 Agent 对话！
 - **快捷提问**：`agy -p "用 Go 写一个并发池"`，跑完即回终端；
 - **图形端快捷启动**：终端敲 `agygo` 即可一键拉起 Antigravity IDE TUN 副本！
@@ -584,6 +590,7 @@ grep -E "子进程|宿主进程: language_server" output-mac/logs/proxy-*.log | 
   # 官方升级后强制重建副本
   ./scripts/mac-patch-app.sh --recreate "/Applications/Antigravity IDE.app" output-mac/libantigravity_proxy.dylib
   ```
+
   注意：对**非 Antigravity 的任意第三方程序**，脚本仍沿用就地补丁方式（不创建副本）。
 
 ### 3. 如何全局安装为系统命令？
@@ -622,6 +629,7 @@ grep -E "子进程|宿主进程: language_server" output-mac/logs/proxy-*.log | 
     echo 'alias agy="$HOME/Applications/Antigravity-Proxy-macOS/Antigravity-Proxy.command agy"' >> ~/.zshrc
     source ~/.zshrc
     ```
+
     （若使用 `scripts/install-mac.sh` 全局安装过，可写 `alias agy="antigravity-proxy agy"`）。
     配置生效后，在任意终端窗口直接输入 `agy` 都会自动挂载透明代理！
 - **重要提示（账号体系共用）**：
@@ -662,6 +670,7 @@ grep -E "子进程|宿主进程: language_server" output-mac/logs/proxy-*.log | 
   ```bash
   ./scripts/mac-patch-app.sh "$HOME/.gemini/bin/agy" ./output-mac/libantigravity_proxy.dylib
   ```
+
   再用启动器启动 IDE 即可；该补丁同样只作用于本机用户目录，官方二进制由扩展在下次升级时自行覆盖。
 
 ---
@@ -672,13 +681,13 @@ grep -E "子进程|宿主进程: language_server" output-mac/logs/proxy-*.log | 
 
 ### A.1 五项测试结果
 
-| 测试 | 结果 | 关键证据 |
-| :-- | :-- | :-- |
-| 1. CTest 单元/回归 | ✅ 6/6 通过 | `./build.sh Release` |
-| 2. 冒烟脚本 | ✅ 通过 | dylib Mach-O 架构正常、环境变量传递正常 |
-| 3. agy CLI 透明联网 | ✅ 通过 | `agy changelog` 经 SOCKS5 隧道拉取成功，退出码 0 |
-| 4. IDE 客户端 | ✅ **登录成功进入主界面** | auth.log `signedIn`，见 A.2 |
-| 5. 子进程注入 | ✅ 通过 | 23 个 Electron/Helper/language_server 进程全部注入 |
+| 测试                | 结果                            | 关键证据                                           |
+| :------------------ | :------------------------------ | :------------------------------------------------- |
+| 1. CTest 单元/回归  | ✅ 6/6 通过                     | `./build.sh Release`                             |
+| 2. 冒烟脚本         | ✅ 通过                         | dylib Mach-O 架构正常、环境变量传递正常            |
+| 3. agy CLI 透明联网 | ✅ 通过                         | `agy changelog` 经 SOCKS5 隧道拉取成功，退出码 0 |
+| 4. IDE 客户端       | ✅ **登录成功进入主界面** | auth.log `signedIn`，见 A.2                      |
+| 5. 子进程注入       | ✅ 通过                         | 23 个 Electron/Helper/language_server 进程全部注入 |
 
 ### A.2 Google 登录链路时间线（IDE auth.log）
 
@@ -699,14 +708,14 @@ grep -E "子进程|宿主进程: language_server" output-mac/logs/proxy-*.log | 
 
 ### A.3 走网络流量的进程清单（逐进程实测）
 
-| 进程 | 网络职责 | 注入 | 联网 |
-| :-- | :-- | :-- | :-- |
-| Electron（主进程） | OAuth 本地回调、更新、部分扩展请求 | ✅ | →10808 |
-| Helper: NetworkService | Chromium 网络请求唯一出口 | ✅ | →10808 |
-| Helper: NodeService ×2~3 | 扩展宿主，token 交换在此发出 | ✅ | →10808 |
-| Helper: Renderer / GPU / Plugin | 渲染、图形、插件 | ✅ | 基本无外网 |
-| language_server_macos_arm ×2 | 登录后 AI 对话流量出口 | ✅ | 多条 →10808 |
-| chrome_crashpad_handler | 仅崩溃上报 | ❌（原始签名，见下） | 实测无外网 |
+| 进程                            | 网络职责                           | 注入                 | 联网         |
+| :------------------------------ | :--------------------------------- | :------------------- | :----------- |
+| Electron（主进程）              | OAuth 本地回调、更新、部分扩展请求 | ✅                   | →10808      |
+| Helper: NetworkService          | Chromium 网络请求唯一出口          | ✅                   | →10808      |
+| Helper: NodeService ×2~3       | 扩展宿主，token 交换在此发出       | ✅                   | →10808      |
+| Helper: Renderer / GPU / Plugin | 渲染、图形、插件                   | ✅                   | 基本无外网   |
+| language_server_macos_arm ×2   | 登录后 AI 对话流量出口             | ✅                   | 多条 →10808 |
+| chrome_crashpad_handler         | 仅崩溃上报                         | ❌（原始签名，见下） | 实测无外网   |
 
 > **上表以 Antigravity IDE 为例。经典版 `Antigravity.app`（Bundle ID `com.google.antigravity`）同为 Electron 架构，但可执行文件命名不同：主程序名为 `Antigravity`（非 `Electron`），Helper 为 `Antigravity Helper*.app`，agent 后端位于 `Contents/Resources/bin/language_server`（实测无 `sandbox-wrapper` 包装，故不触发 Seatbelt 绕过分支）。dylib 侧 `IsAntigravityBundlePath()` 只按"可执行路径是否含 `antigravity`"判定，`IsLanguageServerProcessName()` 精确命中 `language_server`，因此**两个应用无需区分进程名即可全部注入**；补丁脚本按 Bundle/目录名（stem 以 `Antigravity` 开头）识别，`Antigravity.app` 与 `Antigravity IDE.app` 同样适用。
 

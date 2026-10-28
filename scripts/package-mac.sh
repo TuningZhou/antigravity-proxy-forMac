@@ -52,7 +52,7 @@ if [ -z "${VERSION}" ]; then
     elif [ -f "${PROJECT_ROOT}/VERSION" ]; then
         VERSION="$(tr -d ' \r\n' < "${PROJECT_ROOT}/VERSION")"
     else
-        VERSION="2.5.5"
+        VERSION="2.6.0"
     fi
 fi
 VERSION="${VERSION#v}"
