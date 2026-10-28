@@ -1,6 +1,6 @@
 ﻿[CmdletBinding()]
 param(
-    [string]$Version = "2.5.5",
+    [string]$Version = "2.6.0",
     [ValidateSet("x64", "x86")]
     [string]$Arch = "x64",
     [string]$OutputDir = "",

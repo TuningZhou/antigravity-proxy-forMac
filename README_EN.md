@@ -30,7 +30,7 @@
 ### 🍎 macOS Users (Recommended Daily Workflow)
 
 1. **Download & Place**:
-   Download `antigravity-proxy-v2.5.5-mac-universal2.zip` (Universal binary for both Apple Silicon M1~M4 and Intel Mac) and unpack it. Move the extracted `Antigravity-Proxy-macOS` folder to `~/Applications/`.
+   Download `antigravity-proxy-v2.6.0-mac-universal2.zip` (Universal binary for both Apple Silicon M1~M4 and Intel Mac) and unpack it. Move the extracted `Antigravity-Proxy-macOS` folder to `~/Applications/`.
 2. **Start Your Proxy**:
    Ensure your local proxy client (e.g., Surge, Clash, v2ray) is running (default SOCKS5: `127.0.0.1:10808` or mixed port `7890`).
 3. **Launch Desktop IDE**:
@@ -48,14 +48,16 @@
 1. **Prerequisites**:
    Ensure your local proxy software (e.g., v2rayN, Clash) is running (default SOCKS5: `127.0.0.1:10808`; if using Clash's default mixed port `7890`, change `"port": 10808` to `7890` in `config.json`).
 2. **Desktop IDE (Antigravity IDE / Antigravity) Deployment**:
-   - Download and unpack `antigravity-proxy-v2.5.5-ide-win-x64.zip`.
+   - Download and unpack `antigravity-proxy-v2.6.0-ide-win-x64.zip`.
    - Copy `version.dll` and `config.json` into the Antigravity IDE / Antigravity directory (the same folder as `Antigravity IDE.exe` or `Antigravity.exe`).
    - Launch Antigravity IDE.exe or Antigravity.exe normally; traffic will automatically be routed through the proxy.
-3. **Command-Line CLI (Antigravity CLI / `agy`) Deployment**:
-   - Download and unpack `antigravity-proxy-v2.5.5-cli-win-x64.zip`.
-   - Press <kbd>Win</kbd> + <kbd>R</kbd>, enter `%LOCALAPPDATA%\agy\bin`, and press Enter to instantly open the folder where `agy.exe` is installed.
-   - Copy all **3 files** (`dbghelp.dll`, `antigravity_proxy.dll`, `config.json`) into this folder (⚠️ **Do NOT copy `version.dll` from the IDE package**).
-   - Run `agy` in any terminal (PowerShell or CMD) to immediately start using the transparent proxy and fix `token exchange timeout` issues!
+3. **Command-Line CLI (Antigravity CLI / `agy`) Deployment — two directories since 2.6.0**:
+   - Download and unpack `antigravity-proxy-v2.6.0-cli-win-x64.zip`.
+   - **Fully exit all `agy.exe` and Antigravity processes first** (if the DLLs are locked, the copy fails silently — size and timestamp stay unchanged).
+   - **Directory A (terminal `agy`, already on PATH)**: Press <kbd>Win</kbd> + <kbd>R</kbd> and enter `%LOCALAPPDATA%\agy\bin`.
+   - **Directory B (Antigravity IDE 2.6.0 embedded Gemini backend)**: Press <kbd>Win</kbd> + <kbd>R</kbd> and enter `%USERPROFILE%\.gemini\bin`. If it does not exist yet, launch Antigravity IDE 2.6.0 once; the extension downloads agy and creates it.
+   - Copy all **3 files** (`dbghelp.dll`, `antigravity_proxy.dll`, `config.json`) into **both A and B** (⚠️ **Do NOT copy `version.dll` from the IDE package**). Installing only one side leaves the other side connecting directly: the IDE reports `Server failed to start at http://127.0.0.1:11407`, or the terminal reports `token exchange failed ... i/o timeout`.
+   - After copying, compare the file sizes with the archive before running `agy` or launching Antigravity IDE.
 
 ---
 
@@ -280,24 +282,33 @@ Copy the files from `ide/` (`version.dll` and `config.json`) to the **Antigravit
 
 If you are using **Antigravity CLI** (typing `agy` in your terminal), follow these simple steps to configure the proxy:
 
-##### 1. Locate the `agy.exe` Directory in One Click
-No need to search through hidden folders manually:
-- **Easiest method**: Press the <kbd>Win</kbd> + <kbd>R</kbd> shortcut on your keyboard, paste the following into the Run dialog:
-  ```text
-  %LOCALAPPDATA%\agy\bin
-  ```
-  Click "OK" or press Enter, and the exact folder containing `agy.exe` will open immediately!
-- *(Alternative: Run `explorer (Split-Path (Get-Command agy).Source)` in PowerShell)*
+##### 1. Locate the `agy.exe` Directories (two of them since 2.6.0)
 
-##### 2. Copy the 3 CLI Proxy Files
-Extract the downloaded CLI package (e.g. `antigravity-proxy-vX-cli-win-x64.zip` or from local build `output/cli/`), and copy all **3 files** into the `agy.exe` directory:
+Since Antigravity IDE 2.6.0 there are **two** `agy.exe` copies with different roles. **Both need the shim**:
+
+| Directory | How to open | Role |
+| :--- | :--- | :--- |
+| `%LOCALAPPDATA%\agy\bin` | <kbd>Win</kbd> + <kbd>R</kbd>, paste, Enter | Terminal `agy` (on PATH, maintained by the official auto-updater) |
+| `%USERPROFILE%\.gemini\bin` | <kbd>Win</kbd> + <kbd>R</kbd>, paste, Enter | Antigravity IDE embedded Gemini backend (not on PATH, downloaded by the IDE 2.6.0 extension) |
+
+- **Easiest method**: Press the <kbd>Win</kbd> + <kbd>R</kbd> shortcut, paste `%LOCALAPPDATA%\agy\bin` to open directory A, then repeat with `%USERPROFILE%\.gemini\bin` for directory B. If B does not exist, launch Antigravity IDE 2.6.0 once so the extension downloads agy and creates it.
+- *(Alternative: Run `explorer (Split-Path (Get-Command agy).Source)` in PowerShell to open the copy on PATH)*
+
+##### 2. Copy the 3 CLI Proxy Files (into BOTH directories)
+
+> ⚠️ **Fully exit all `agy.exe` and Antigravity processes before copying.** A locked DLL makes the copy fail silently — size and timestamp stay unchanged, so it looks copied but is still the old build.
+
+Extract the downloaded CLI package (e.g. `antigravity-proxy-vX-cli-win-x64.zip` or from local build `output/cli/`), and copy all **3 files** into both directory A and directory B:
 1. `dbghelp.dll` (Startup loader shim)
 2. `antigravity_proxy.dll` (Proxy engine, **must be colocated with dbghelp.dll**)
 3. `config.json` (Configuration file)
 
+Compare the file sizes with the archive afterwards.
+
 > ⚠️ **Key Tips for Beginners**:
 > 1. **Do NOT copy `version.dll` into the CLI directory!** The CLI must use `dbghelp.dll` to load `antigravity_proxy.dll`. If an old `version.dll` exists in this folder, delete it!
 > 2. Both `dbghelp.dll` and `antigravity_proxy.dll` are **mandatory** and must stay together in the same directory.
+> 3. **Installing only one side**: with only directory A, the IDE backend connects directly and the extension reports `Server failed to start at http://127.0.0.1:11407`; with only directory B, terminal `agy` reports `token exchange failed ... i/o timeout`.
 
 ##### 3. Check Proxy Port (Default is 10808)
 Open `config.json` with Notepad and check the `proxy` settings:
@@ -347,6 +358,21 @@ If you are migrating an old `config.json`, make sure `child_injection` is still 
 Antigravity updates may clean injected files from the install directory. If proxying stops after an update, copy the files again. If your proxy client separates mixed-port and SOCKS5 ports, make sure `proxy.type` and `proxy.port` match the actual local listener.
 
 More field notes: `docs/antigravity-2.0-issue-85.md`.
+
+#### Antigravity 2.6 / Dual `agy` Directories
+
+Google has bumped the Antigravity language server to **2.28.0** and Antigravity IDE to **2.6.0**. The IDE's Gemini backend switched from `language_server.exe` to **`agy.exe` (Gemini CLI core)**, so Windows now has two copies of `agy.exe`:
+
+| Directory | Installed by | On PATH | Role |
+| :--- | :--- | :--- | :--- |
+| `%LOCALAPPDATA%\agy\bin` | Antigravity CLI installer + background auto-updater | ✅ | Terminal `agy` |
+| `%USERPROFILE%\.gemini\bin` | Antigravity IDE 2.6.0 extension (follows the Gemini CLI `~/.gemini` layout) | ❌ | IDE embedded Gemini backend |
+
+- Both binaries are the same version but **update independently** — never assume changing one affects the other.
+- Windows DLL hijacking only applies to the executable in the **same directory**, so the 3 files from `output/cli` **must be copied into both directories**. With only directory A, the IDE backend times out after 30 seconds and the extension reports `Server failed to start at http://127.0.0.1:11407`; with only directory B, terminal `agy` reports `token exchange failed ... i/o timeout`.
+- **Fully exit all `agy.exe` and Antigravity processes before copying**; otherwise the DLLs are locked and the copy fails silently (size and timestamp unchanged, so it looks successful but is still the old build).
+- `agy` auto-update only replaces `agy.exe` and does not delete the shim; after each update, confirm `logs/proxy-YYYYMMDD.log` still contains `配置加载成功` and `隧道建立成功`.
+- When the shim works, **no** IDE user setting is required. If the shim ever fails to load, you can temporarily add `"http.proxy": "http://127.0.0.1:10808"` to `settings.json` as a fallback: agy is a Go program and ignores the Windows system proxy, honoring only `HTTP_PROXY` / `HTTPS_PROXY`.
 
 #### Common Windows Path + Quick Jump
 

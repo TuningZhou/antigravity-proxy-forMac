@@ -30,7 +30,7 @@
 ### 🍎 macOS 用户（推荐日常姿势）
 
 1. **下载与放置**：
-   下载 `antigravity-proxy-v2.5.5-mac-universal2.zip`（推荐通用双架构包，兼容 M1~M4 及 Intel Mac）解压，建议将解压出的 `Antigravity-Proxy-macOS` 文件夹移动到 `~/Applications/` 目录。
+   下载 `antigravity-proxy-v2.6.0-mac-universal2.zip`（推荐通用双架构包，兼容 M1~M4 及 Intel Mac）解压，建议将解压出的 `Antigravity-Proxy-macOS` 文件夹移动到 `~/Applications/` 目录。
 2. **启动代理**：
    确保本地代理客户端已开启（如 Surge、Clash、v2ray，默认监听 SOCKS5 `127.0.0.1:10808` 或混合端口 `7890`）。
 3. **桌面端启动（IDE）**：
@@ -48,14 +48,16 @@
 1. **准备工作**：
    确保本地代理软件（如 v2rayN、Clash 等）已开启（默认监听 SOCKS5 `127.0.0.1:10808`；若使用 Clash 默认混合端口 `7890`，请在包内 `config.json` 中将 `port` 改为 `7890`）。
 2. **桌面端（Antigravity IDE / Antigravity）部署**：
-   - 下载并解压 `antigravity-proxy-v2.5.5-ide-win-x64.zip`。
+   - 下载并解压 `antigravity-proxy-v2.6.0-ide-win-x64.zip`。
    - 将包内的 `version.dll` 与 `config.json` 复制到 Antigravity IDE / Antigravity 安装目录（即 `Antigravity IDE.exe` 或 `Antigravity.exe` 同级目录）。
    - 直接启动 Antigravity IDE.exe 或 Antigravity.exe，网络请求即刻自动走代理。
-3. **命令行端（Antigravity CLI / `agy`）部署**：
-   - 下载并解压 `antigravity-proxy-v2.5.5-cli-win-x64.zip`。
-   - 按键盘 <kbd>Win</kbd> + <kbd>R</kbd>，输入 `%LOCALAPPDATA%\agy\bin` 并按回车，直达 `agy.exe` 所在目录。
-   - 将包内的 **3 个文件**（`dbghelp.dll`、`antigravity_proxy.dll`、`config.json`）全部复制到该目录（⚠️ **切勿复制桌面端的 `version.dll`**）。
-   - 在任意终端（PowerShell 或 CMD）中直接运行 `agy` 即可畅享透明代理，彻底解决 `token exchange timeout` 登录超时！
+3. **命令行端（Antigravity CLI / `agy`）部署 —— 2.6.0 起有两个目录**：
+   - 下载并解压 `antigravity-proxy-v2.6.0-cli-win-x64.zip`。
+   - **先完全退出所有 `agy.exe` 与 Antigravity 进程**（DLL 被占用时复制会静默失败，文件大小与时间戳都不变）。
+   - **目录 A（终端 `agy`，已在 PATH 中）**：按键盘 <kbd>Win</kbd> + <kbd>R</kbd>，输入 `%LOCALAPPDATA%\agy\bin` 并按回车。
+   - **目录 B（Antigravity IDE 2.6.0 内嵌 Gemini 后端）**：按键盘 <kbd>Win</kbd> + <kbd>R</kbd>，输入 `%USERPROFILE%\.gemini\bin` 并按回车。若该目录不存在，先启动一次 Antigravity IDE 2.6.0，扩展会自动下载 agy 并创建它。
+   - 将包内的 **3 个文件**（`dbghelp.dll`、`antigravity_proxy.dll`、`config.json`）**分别复制到 A、B 两个目录**（⚠️ **切勿复制桌面端的 `version.dll`**）。只装一处会导致另一侧直连：IDE 报 `Server failed to start at http://127.0.0.1:11407`，或终端报 `token exchange failed ... i/o timeout`。
+   - 复制完成后核对文件大小，确认与压缩包内一致，再运行 `agy` 或启动 Antigravity IDE 即可畅享透明代理。
 
 ---
 
@@ -283,24 +285,33 @@ Release 按架构和运行目标提供四个独立压缩包，下载时只选实
 
 如果你使用的是 **Antigravity CLI**（在终端输入 `agy` 交互），请按照以下傻瓜式步骤配置代理：
 
-##### 1. 一键打开 `agy.exe` 所在目录
-很多小白不知道 `agy.exe` 装在哪里，其实无需手动寻找深层目录：
-- **最简单的办法**：按下键盘上的快捷键 <kbd>Win</kbd> + <kbd>R</kbd>，在弹出的“运行”窗口中直接粘贴：
-  ```text
-  %LOCALAPPDATA%\agy\bin
-  ```
-  点击“确定”或按回车，系统就会直接打开 `agy.exe` 所在的文件夹！
-- *(备用方法：在 PowerShell 终端中执行 `explorer (Split-Path (Get-Command agy).Source)` 也可以瞬间弹开该目录)*
+##### 1. 一键打开 `agy.exe` 所在目录（2.6.0 起有两个）
 
-##### 2. 复制 3 个 CLI 代理文件
-解压下载好的 CLI 压缩包（如 `antigravity-proxy-vX-cli-win-x64.zip`）中的 `cli/` 目录（或编译输出的 `output/cli/`），将其中的 **3 个文件**全部复制粘贴到刚才打开的 `agy.exe` 文件夹中：
+Antigravity IDE 2.6.0 起，`agy.exe` 会出现**两份**，用途不同，**两处都要部署**：
+
+| 目录 | 怎么打开 | 用途 |
+| :--- | :--- | :--- |
+| `%LOCALAPPDATA%\agy\bin` | <kbd>Win</kbd> + <kbd>R</kbd> 粘贴后回车 | 终端 `agy`（该目录在 PATH 中，官方 auto-updater 维护） |
+| `%USERPROFILE%\.gemini\bin` | <kbd>Win</kbd> + <kbd>R</kbd> 粘贴后回车 | Antigravity IDE 内嵌 Gemini 后端（不在 PATH，由 IDE 2.6.0 扩展下载） |
+
+- **最简单的办法**：按下键盘上的快捷键 <kbd>Win</kbd> + <kbd>R</kbd>，在弹出的“运行”窗口中粘贴 `%LOCALAPPDATA%\agy\bin`，点击“确定”打开目录 A；同样方式粘贴 `%USERPROFILE%\.gemini\bin` 打开目录 B。若目录 B 不存在，先启动一次 Antigravity IDE 2.6.0，扩展会自动下载 agy 并创建它。
+- *(备用方法：在 PowerShell 终端中执行 `explorer (Split-Path (Get-Command agy).Source)` 可瞬间弹开 PATH 中的那一份)*
+
+##### 2. 复制 3 个 CLI 代理文件（A、B 两个目录都要复制）
+
+> ⚠️ **复制前先完全退出所有 `agy.exe` 与 Antigravity 进程**。DLL 被占用时复制会静默失败——文件大小和时间戳都不变，看起来已覆盖，实际仍是旧版。
+
+解压下载好的 CLI 压缩包（如 `antigravity-proxy-vX-cli-win-x64.zip`）中的 `cli/` 目录（或编译输出的 `output/cli/`），将其中的 **3 个文件**分别复制到目录 A 与目录 B：
 1. `dbghelp.dll`（入口引导）
 2. `antigravity_proxy.dll`（代理核心，**必须与 dbghelp.dll 放在一起**）
 3. `config.json`（配置文件）
 
+复制后用资源管理器核对文件大小，确认与压缩包内一致。
+
 > ⚠️ **新手避坑关键提示**：
 > 1. **千万不要复制桌面端的 `version.dll`！** CLI 必须通过 `dbghelp.dll` 引导加载 `antigravity_proxy.dll`。如果该目录下之前残留有 `version.dll`，请直接删除！
 > 2. `dbghelp.dll` 与 `antigravity_proxy.dll` **缺一不可**，必须同时存在。
+> 3. **只装一处的后果**：只装目录 A → IDE 内嵌 agy 直连，扩展报 `Server failed to start at http://127.0.0.1:11407`；只装目录 B → 终端 `agy` 报 `token exchange failed ... i/o timeout`。
 
 ##### 3. 检查代理端口（默认已配置为 10808）
 用记事本打开同目录下的 `config.json`，检查 `proxy` 设置：
@@ -350,6 +361,21 @@ Antigravity 2.0 新增/改名了关键进程，默认配置已覆盖：
 Antigravity 更新后可能清理安装目录里的劫持文件；如果更新后不走代理，请重新复制这些文件。若代理软件区分 mixed-port 和 SOCKS5 端口，也要确认 `proxy.type` 和 `proxy.port` 匹配本机实际监听端口。
 
 更多现场记录见 `docs/antigravity-2.0-issue-85.md`。
+
+#### Antigravity 2.6 / agy 双目录说明
+
+Google 本轮把 Antigravity 的语言服务器升级到 **2.28.0**、Antigravity IDE 升级到 **2.6.0**。IDE 内的 Gemini 后端从 `language_server.exe` 换成了 **`agy.exe`（Gemini CLI 内核）**，于是 Windows 上会出现两份 `agy.exe`：
+
+| 目录 | 由谁安装 | 在 PATH 中 | 用途 |
+| :--- | :--- | :--- | :--- |
+| `%LOCALAPPDATA%\agy\bin` | Antigravity CLI 官方安装器 + 后台 auto-updater | ✅ | 终端直接运行 `agy` |
+| `%USERPROFILE%\.gemini\bin` | Antigravity IDE 2.6.0 扩展自动下载（Gemini CLI 的 `~/.gemini` 目录约定） | ❌ | IDE 内嵌 Gemini 后端 |
+
+- 两份二进制版本一致，但**各自独立更新**，不要假设改动一处会影响另一处。
+- Windows 的 DLL 劫持只对**同目录**的 exe 生效，所以 `output/cli` 的 3 个文件**必须分别复制到两个目录**。只装目录 A：IDE 后端 30 秒超时，扩展报 `Server failed to start at http://127.0.0.1:11407`；只装目录 B：终端 `agy` 报 `token exchange failed ... i/o timeout`。
+- **复制前必须完全退出所有 `agy.exe` 与 Antigravity 进程**，否则 DLL 被占用，复制会静默失败（文件大小、时间戳都不变，看似覆盖成功实则仍是旧版）。
+- `agy` 的自动更新只替换 `agy.exe`，不会删除 shim；每次更新后建议检查 `logs/proxy-YYYYMMDD.log` 是否仍有 `[信息] 配置加载成功。` 与 `隧道建立成功`。
+- shim 生效时**无需**修改 IDE 的用户设置。若某次 shim 未加载，可在 `settings.json` 里临时加 `"http.proxy": "http://127.0.0.1:10808"` 兜底：agy 是 Go 程序，不读 Windows 系统代理，只认 `HTTP_PROXY` / `HTTPS_PROXY` 环境变量。
 
 #### Windows 常见目录 + 快速跳转
 
