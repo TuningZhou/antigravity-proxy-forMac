@@ -1,4 +1,13 @@
 # 🚀 Antigravity-Proxy v2.6.0 发布说明
+省流 Google搞抽象，升级Antigravity到v2.28.0和IDE到v2.6.0，整出两个agy.exe (CLI)
+这两个agy的目录下都放了`antigravity-proxy-v2.6.0-cli-win-x64.zip`的解压文件就OK了。
+
+其实这些的压缩包 (Assets) 如`antigravity-proxy-v2.6.0-cli-win-x64.zip`等等，和v2.5.6的是一致的。没有任何变化。
+
+IDE v2.6.0 的后端换成了 Gemini CLI 系 （agy v1.4.9，language server 2.28.0）。它遵循 Gemini CLI 的目录约定，把程序和配置放在`%USERPROFILE%\.gemini` （即`C:\Users\您的电脑名\.gemini` ，下面有`bin` 、`antigravity` 、`antigravity-cli` 等）。因此：
+
+- 旧的`%LOCALAPPDATA%\agy\bin` ：v2.5.x 时代 CLI 的独立安装位置，官方 auto-updater 仍在维护（目录里的`agy.exe.*.old` 就是今天 19:03 更新留下的），PATH 也仍指向它；
+- 新的`~/.gemini/bin` ：IDE 扩展自己下载的副本， 故意不进 PATH ，专供 IDE 后端使用。
 
 本项目提供 **Windows** 与 **macOS** 平台下 Google Antigravity（桌面 IDE 与命令行 agy / CLI）的透明代理支持，彻底解决国内网络环境下无法登录 Google 账号、Token 交换超时（`i/o timeout`）、以及 AI 补全连通性问题。
 
