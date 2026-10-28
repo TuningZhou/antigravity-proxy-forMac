@@ -6,7 +6,9 @@ CXX_DEFINES = -Dantigravity_proxy_EXPORTS
 
 CXX_INCLUDES = -I/Users/mac/Documents/Code-Program/antigravity-proxy/include -I/Users/mac/Documents/Code-Program/antigravity-proxy/src
 
+CXX_FLAGSarm64 = -O3 -DNDEBUG -std=gnu++17 -arch arm64 -fPIC
+
 CXX_FLAGSx86_64 = -O3 -DNDEBUG -std=gnu++17 -arch x86_64 -fPIC
 
-CXX_FLAGS = -O3 -DNDEBUG -std=gnu++17 -arch x86_64 -fPIC
+CXX_FLAGS = -O3 -DNDEBUG -std=gnu++17 -arch arm64 -arch x86_64 -fPIC
 

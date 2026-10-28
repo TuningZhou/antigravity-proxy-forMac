@@ -443,6 +443,7 @@ find_agy() {
     p="$(command -v agy 2>/dev/null || true)"
     [ -n "${p}" ] && { echo "${p}"; return; }
     for p in "${HOME}/.antigravity/bin/agy" "${HOME}/.local/bin/agy" \
+             "${HOME}/.gemini/bin/agy" \
              "/opt/homebrew/bin/agy" "/usr/local/bin/agy"; do
         [ -f "${p}" ] && { echo "${p}"; return; }
     done
@@ -488,15 +489,15 @@ check_environment() {
                 echo "      强行启动会导致应用被系统 dyld 拦截并崩溃 (SIGABRT Code 9)。"
                 echo ""
                 echo "解决办法: 请使用适合本机的版本："
-                echo "  1) antigravity-proxy-v${VERSION:-2.5.5}-mac-arm64.zip (推荐，原生 Apple Silicon 版)"
-                echo "  2) antigravity-proxy-v${VERSION:-2.5.5}-mac-universal2.zip (通用双架构版)"
+                echo "  1) antigravity-proxy-v${VERSION:-2.6.0}-mac-arm64.zip (推荐，原生 Apple Silicon 版)"
+                echo "  2) antigravity-proxy-v${VERSION:-2.6.0}-mac-universal2.zip (通用双架构版)"
             else
                 echo -e "说明: 您的 Mac 是 ${C_BOLD}Intel (x86_64)${C_RESET} 芯片，"
                 echo "      而当前解压的是 Apple Silicon (arm64) 架构的安装包。"
                 echo ""
                 echo "解决办法: 请使用适合本机的版本："
-                echo "  1) antigravity-proxy-v${VERSION:-2.5.5}-mac-x64.zip (推荐，Intel 专用版)"
-                echo "  2) antigravity-proxy-v${VERSION:-2.5.5}-mac-universal2.zip (通用双架构版)"
+                echo "  1) antigravity-proxy-v${VERSION:-2.6.0}-mac-x64.zip (推荐，Intel 专用版)"
+                echo "  2) antigravity-proxy-v${VERSION:-2.6.0}-mac-universal2.zip (通用双架构版)"
             fi
             echo -e "${C_RED}==================================================${C_RESET}"
             return 1
@@ -864,6 +865,13 @@ launch_app() {
 
     preflight_restart_running_copy "${EFFECTIVE_APP}" || return 1
 
+    # IDE 2.6.0 起 AI 后端改用扩展下载的 ~/.gemini/bin/agy（独立更新）。
+    # 启动前静默自愈其签名权限，否则 IDE 报
+    # "Server failed to start at http://127.0.0.1:xxxxx after 30000ms"。
+    if command -v macpatch_ensure_gemini_backends >/dev/null 2>&1; then
+        macpatch_ensure_gemini_backends "${DYLIB}" || true
+    fi
+
     echo -e "${C_GREEN}[启动] 正在以透明代理模式启动 Antigravity（代理专用副本）...${C_RESET}"
     echo "       副本: ${EFFECTIVE_APP}"
     [ -n "${ORIG_APP:-}" ] && echo "       原件保持原样，未做任何修改"
@@ -1192,9 +1200,18 @@ SOCKS5/HTTP 代理，不需要开启系统全局代理或 TUN 模式。
     （重新复制+补丁，选 1 后按 Y 即可，原件同样不受影响）；
   · 不想要代理环境了：直接把“Antigravity IDE TUN.app”拖到废纸篓即可，
     官方程序完好无损。
-另外，agent 后端（language_server）原本被 Seatbelt 沙箱禁止联网，
+另外，agent 后端（≤2.5.x 的 language_server）原本被 Seatbelt 沙箱禁止联网，
 代理启动副本时会自动让它在沙箱外运行，否则它连不上你的本地代理端口。
 这与普通开发命令行工具的运行权限相同。
+
+【Antigravity IDE 2.6.0 用户请注意】
+2.6.0 起 IDE 的 AI 后端改用扩展下载的 ~/.gemini/bin/agy（与终端安装的
+~/.local/bin/agy 是两份独立文件）。本版本启动器会在每次启动 IDE 前自动
+检查并完成该后端的本地重签名（不改动 Antigravity IDE.app 本体），
+无需手工复制文件。扩展下次升级覆盖后，下次启动会再次自动自愈。
+如果升级后第一次打开 AI 面板仍报
+  Couldn't load this view / Server failed to start ... after 30000ms
+请先 ⌘Q 完全退出 IDE，再重新运行本启动器一次即可。
 
 【第一次双击提示“无法打开”怎么办？】
 这是 macOS 的安全提示（本包未在苹果付费注册开发者签名）。

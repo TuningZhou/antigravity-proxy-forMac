@@ -43,7 +43,9 @@
     "language_server.exe",
     "language_server_windows_x64.exe",
     "node",
-    "node.exe"
+    "node.exe",
+    "agy",
+    "agy.exe"
   ],
   "childInjection": true,
   "logging": {

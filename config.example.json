@@ -49,7 +49,9 @@
     "Antigravity IDE Helper (GPU)",
     "Antigravity IDE Helper (Plugin)",
     "node",
-    "node.exe"
+    "node.exe",
+    "agy",
+    "agy.exe"
   ],
   "childInjection": true,
   "logging": {

@@ -6,6 +6,25 @@
 
 ### 新增（Added）
 
+- **适配 Antigravity IDE 2.6.0 的"双 agy"结构（内嵌 Gemini 后端 `~/.gemini/bin/agy`）**。
+  IDE 2.6.0 把 AI 后端由 app 包内的 `language_server` 换成扩展下载的
+  `~/.gemini/bin/agy`（Gemini CLI 内核，当前 1.4.9），它与终端独立安装的
+  `~/.local/bin/agy` 是两份独立文件、各自更新。
+  - `ProcessName.hpp` 新增 `IsAgyProcessName()` 与 `IsGeminiCliBackendPath()`，
+    `IsAntigravityRelatedMacProcess()` 将其纳入兜底识别；`HooksMac.cpp` 的
+    `posix_spawn` / `posix_spawnp` / `execve` 三条子进程路径统一使用该判断，
+    IDE 派生的 agy 会自动注入，不再直连。
+  - `mac-patch-app.sh` 新增 `macpatch_list_gemini_backends()` 与
+    `macpatch_ensure_gemini_backends()`：启动 IDE 前静默检查
+    `~/.gemini/bin/agy` 的签名，官方后台升级覆盖后自动完成 ad-hoc 重签名自愈；
+    同时清理 IDE 超时退出后遗留的 `agy --hub` 孤儿进程（`ppid=1`），
+    避免残留后端占用文件或让新 IDE 误连旧后端。
+  - 三处启动器（`antigravity-proxy.sh`、`install-mac.sh`、`package-mac.sh` 内嵌
+    launcher）在启动应用前调用上述自愈；终端 agy 查找顺序末尾追加
+    `~/.gemini/bin/agy` 作为"只装 IDE、没装独立 CLI"时的兜底。
+  - `config.json` / `config.example.json` 的 `childProcesses` 增加 `agy`、`agy.exe`。
+  - 修复 IDE 升级 2.6.0 后 AI 视图报
+    `Couldn't load this view` / `Server failed to start ... after 30000ms` 的问题。
 - **同时支持两个独立应用：经典版 `Antigravity.app` 与 `Antigravity IDE.app`**。
   两者 Bundle ID 不同（`com.google.antigravity` / `com.google.antigravity-ide`，
   主可执行分别为 `Antigravity` / `Electron`），但共用同一套 Google 登录与账号验证。

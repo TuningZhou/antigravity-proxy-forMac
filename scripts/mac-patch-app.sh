@@ -541,6 +541,94 @@ macpatch_ensure_target() {
     return 0
 }
 
+# ==============================================================================
+# Antigravity IDE 2.6.0+ 内嵌 Gemini 后端（agy）自愈
+#
+# 2.6.0 起 IDE 的 AI 后端不再是 app 包内的 language_server，而是扩展下载到
+# Gemini CLI 目录约定的独立 agy：
+#   macOS:   ~/.gemini/bin/agy
+#   Windows: %USERPROFILE%\.gemini\bin\agy.exe
+# 它与终端 agy（macOS: ~/.local/bin/agy）是两份不同文件、各自独立更新。
+# 该后端带 Hardened Runtime，未补丁时 DYLD 注入会被系统忽略，启动阶段
+# 连不上 Google 鉴权接口，IDE 侧表现为：
+#   Couldn't load this view
+#   Server failed to start at http://127.0.0.1:xxxxx after 30000ms
+# ==============================================================================
+
+# 列出本机 IDE 内嵌 Gemini 后端 agy 的候选路径（每行一个）
+macpatch_list_gemini_backends() {
+    local c seen=""
+    for c in \
+        "${HOME}/.gemini/bin/agy" \
+        "${HOME}"/.gemini/*/bin/agy; do
+        [ -f "${c}" ] || continue
+        case "|${seen}|" in *"|${c}|"*) continue ;; esac
+        seen="${seen:+${seen}|}${c}"
+        printf '%s\n' "${c}"
+    done
+}
+
+# 清理"孤儿"IDE 内嵌后端：IDE 已退出但 agy --hub 仍挂在 launchd(ppid=1) 下。
+# 这类残留进程会占用可执行文件导致无法重签名，也会让新 IDE 误连旧后端。
+# 仅处理 ppid=1 的 --hub 进程，不碰终端里用户自己运行的 agy。
+macpatch_kill_orphan_gemini_backends() {
+    local target="$1" pids pid ppid sig
+    pids="$(pgrep -f "${target}.*--hub" 2>/dev/null || true)"
+    [ -n "${pids}" ] || return 0
+    for sig in TERM KILL; do
+        for pid in ${pids}; do
+            ppid="$(ps -o ppid= -p "${pid}" 2>/dev/null | tr -d ' ')"
+            [ "${ppid}" = "1" ] || continue
+            __mp_log "清理残留的 IDE 内嵌 Gemini 后端 (PID ${pid}): ${target}"
+            kill -"${sig}" "${pid}" 2>/dev/null || true
+        done
+        [ "${sig}" = "TERM" ] || break
+        local wait_i=0
+        while [ "${wait_i}" -lt 20 ] && macpatch_is_running "${target}"; do
+            sleep 0.25
+            wait_i=$((wait_i + 1))
+        done
+    done
+}
+
+# 静默自愈：确保 IDE 内嵌后端可被 DYLD 注入。
+# 每次启动 IDE 副本前调用；官方后台静默升级覆盖后会自动重新补丁。
+# 返回 0=全部就绪（未安装后端也视为就绪），非 0=至少一个补丁失败。
+macpatch_ensure_gemini_backends() {
+    local dylib="${1:-}" p rc=0 failed=0 found=0
+    while IFS= read -r p; do
+        [ -n "${p}" ] || continue
+        found=1
+        macpatch_target_needs_patch "${p}" || continue
+        if macpatch_is_running "${p}"; then
+            # 先清理 IDE 崩溃/超时后遗留的孤儿后端，再短暂等待其它进程收尾。
+            macpatch_kill_orphan_gemini_backends "${p}"
+            local wait_i=0
+            while [ "${wait_i}" -lt 20 ] && macpatch_is_running "${p}"; do
+                sleep 0.25
+                wait_i=$((wait_i + 1))
+            done
+        fi
+        if macpatch_is_running "${p}"; then
+            __mp_warn "IDE 内嵌后端仍在运行，跳过补丁（请 ⌘Q 退出 IDE 后重试）: ${p}"
+            failed=1
+            continue
+        fi
+        __mp_log "检测到 IDE 内嵌 Gemini 后端需要补丁: ${p}"
+        if macpatch_ensure_target "${p}" "${dylib}"; then
+            __mp_log "自愈完成：IDE 内嵌 Gemini 后端已可注入代理: ${p}"
+        else
+            rc=$?
+            failed=1
+            __mp_warn "IDE 内嵌 Gemini 后端补丁失败（返回码 ${rc}）: ${p}"
+        fi
+    done < <(macpatch_list_gemini_backends)
+    if [ "${found}" -eq 0 ]; then
+        __mp_log "未发现 ~/.gemini/bin/agy（IDE 2.6.0 首次启动时自动下载；下载后重新运行启动器即可自愈）。"
+    fi
+    [ "${failed}" -eq 0 ]
+}
+
 # 直接执行模式
 if [ "${BASH_SOURCE[0]:-$0}" = "${0}" ]; then
     set -euo pipefail

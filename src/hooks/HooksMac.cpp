@@ -768,10 +768,10 @@ int my_posix_spawnp(pid_t* pid, const char* file,
     const auto& config = Core::Config::Instance();
 
     // posix_spawnp 的 file 可能是 PATH 相对名，路径兜底失效时仍有进程名/名单判断
+    // （agy 内嵌后端可能以相对名 spawn，需按进程名与 ~/.gemini 目录一并兜底）
     const bool injectThisChild = config.childInjection &&
         (config.ShouldInjectChildProcess(baseName) ||
-         Hooks::IsLanguageServerProcessName(baseName) ||
-         Hooks::IsAntigravityBundlePath(effectivePath));
+         Hooks::IsAntigravityRelatedMacProcess(effectivePath, baseName));
 
     if (injectThisChild) {
         std::string dylibPath = GetCurrentDylibPath();

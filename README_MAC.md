@@ -56,7 +56,7 @@ macOS 端完全采用 Apple 官方规范的 **Dyld 符号重定向 (Dyld Interpo
 | 首次准备 | 复制文件到安装目录 | 下载解压即用；首次启动自动在官方 App **同目录复制一份副本**（命名为 `Antigravity TUN.app` / `Antigravity IDE TUN.app`），签名补丁只打在副本上，官方原件一个字节都不改 |
 | 日常启动 | **照常双击** Antigravity 图标即可 | **必须通过启动器启动**（见第 3 步），启动的是带 TUN 后缀的代理副本；直接点官方图标不走代理 |
 | IDE 升级后 | 可能要重新复制 DLL | 升级后首次启动会检测到版本不一致，按提示让启动器**重新复制+补丁副本**即可（原件始终不动） |
-| 子进程代理 | 自动注入 | 自动注入（`posix_spawn` / `execve` 自动传播；`language_server` 自动绕过 Seatbelt 沙箱包装） |
+| 子进程代理 | 自动注入 | 自动注入（`posix_spawn` / `execve` 自动传播；`language_server`（≤2.5.x）/ `~/.gemini/bin/agy`（2.6.0+）自动识别并注入） |
 
 > ⚠️ **最重要的一句话：Mac 上每次都要用启动器打开 Antigravity 才走代理——启动器运行的是同目录下的"Antigravity IDE TUN"副本；直接从"访达 / 启动台 / 程序坞"点开不带 TUN 的官方图标不会走代理。**
 >
@@ -153,6 +153,43 @@ open -e ~/.config/antigravity-proxy/config.json
 dylib 拦截到该包装脚本时会直接还原为 `language_server` 本体启动（日志中会出现
 "已绕过 Seatbelt/sandbox-exec"），使其与普通开发命令行工具拥有相同的联网/注入条件。
 
+### 🆕 Antigravity 2.6.0：IDE 内嵌 Gemini 后端（agy）自动自愈
+
+Google 在 **Antigravity IDE 2.6.0** 中把 AI 后端由 app 包内的 `language_server` 换成了
+**`agy`（Gemini CLI 内核，当前 1.4.9）**。这带来一个关键变化：**机器上会出现两份 agy**。
+
+| agy 路径 | 由谁安装 / 更新 | 用途 |
+| :--- | :--- | :--- |
+| `~/.local/bin/agy` | Antigravity CLI 官方安装器 + 后台 auto-updater | 你在终端敲 `agy` 时运行的那一份 |
+| `~/.gemini/bin/agy` | **Antigravity IDE 2.6.0 扩展自动下载**（遵循 Gemini CLI 的 `~/.gemini` 目录约定） | IDE 内嵌的 AI 后端，仅供 IDE 调用 |
+
+两份文件**独立更新、互不影响**，且都启用了 Hardened Runtime。旧版启动器只处理了终端 agy 与
+app 包内进程，IDE 新下载的 `~/.gemini/bin/agy` 不在 app 包内、路径也不含 `antigravity`，
+因此会被当成普通进程放行（或注入被系统静默忽略），表现为 IDE 内 AI 视图报：
+
+```text
+Couldn't load this view
+Server failed to start at http://127.0.0.1:xxxxx after 30000ms
+```
+
+v2.6.0 起已按 Windows 分支同样的思路修复（Windows 是把 shim 复制到
+`%LOCALAPPDATA%\agy\bin` 与 `%USERPROFILE%\.gemini\bin` 两个目录，macOS 因 Hardened Runtime
+改为启动前自动重签名）：
+
+1. **dylib 识别双 agy**：`IsAntigravityRelatedMacProcess()` 新增 `agy` 进程名与
+   `~/.gemini/` 路径兜底，IDE 派生的后端（`posix_spawn` / `posix_spawnp` / `execve`）会自动注入，
+   日志中会出现 `当前宿主进程: agy` / `当前进程 agy 启用代理拦截模式`。
+2. **启动器启动前自愈**：每次通过启动器启动 IDE 前，自动检查 `~/.gemini/bin/agy`
+   是否仍带官方签名；若官方后台静默升级覆盖，会自动完成本地 ad-hoc 重签名
+   （已打过补丁时只是毫秒级校验；首次重签约需数秒）。
+   该过程**不改动 `Antigravity IDE.app` 本体**，只处理用户目录下的 agy 后端；
+   扩展下次升级覆盖后，下次启动会再次自动自愈，无需手工复制文件。
+3. **首次安装/升级后的正确姿势**：如果 IDE 刚升级、后端是首次下载，第一次启动可能仍失败；
+   **完全退出 IDE（⌘Q）后再运行一次启动器**即可完成自愈，之后每次都能正常连通。
+
+> 💡 无需手动改 IDE 的 `http.proxy` 设置。注入生效时 IDE 网络请求自然走代理；
+> 只有自愈失败时才需要查看第七节 FAQ 7，或重新运行一次启动器。
+
 ### 第 3 步：通过启动器启动 Antigravity / Launch via Launcher
 
 **方式 A**：双击 `Antigravity-Proxy.command` → 菜单选 **1**（首次会先自动复制 TUN 副本并打签名补丁，随后启动副本）；
@@ -222,6 +259,14 @@ tail -n 30 ~/.local/lib/logs/proxy-*.log 2>/dev/null || tail -n 30 output-mac/lo
 [INFO] 当前进程 Electron 启用代理拦截模式
 [INFO] macOS 代理重定向: 目标=... 代理=127.0.0.1:10808 类型=socks5
 [INFO] 检测到 sandbox-wrapper 包装的 language_server_macos_arm，已绕过 Seatbelt/sandbox-exec 直接启动
+```
+
+**Antigravity IDE 2.6.0 及以上**还会出现内嵌 Gemini 后端的独立日志行（说明第二份 agy 也已走代理）：
+
+```text
+[INFO] 当前宿主进程: agy (路径: /Users/xxx/.gemini/bin/agy)
+[INFO] 当前进程 agy 启用代理拦截模式
+[INFO] 自愈完成：IDE 内嵌 Gemini 后端已可注入代理: /Users/xxx/.gemini/bin/agy
 ```
 
 ### 💡 让日常使用更省事（普通用户最推荐姿势）
@@ -594,6 +639,30 @@ grep -E "子进程|宿主进程: language_server" output-mac/logs/proxy-*.log | 
   - **直接重试**：网络瞬断或 Google 503 属于偶发抖动，直接重新发送一次提问即可（再次提问即可正常输出解答）；
   - **切换稳定节点**：若频繁遭遇 EOF，请在代理客户端（如 Clash、v2rayN、Surge）中选择延迟低、丢包率低且长连接稳定的优质节点；
   - **确认别名配置**：确保终端运行的是代理模式（执行 `which agy` 检查是否指向启动器的别名），避免原生直连。
+
+### 7. IDE 升级到 2.6.0 后 AI 视图报 `Server failed to start ... after 30000ms`？
+
+- **现象**：IDE 内 AI 面板显示 `Couldn't load this view` / `Server failed to start at http://127.0.0.1:xxxxx after 30000ms`，
+  但终端里的 `agy` 一切正常；`~/.gemini/logs/install.log` 里有 `Re-verifying binary after detecting modification`。
+- **原因**：2.6.0 起 IDE 后端改为扩展下载的 `~/.gemini/bin/agy`，它是**独立于 app 包的第二份 agy**，
+  路径既不在 `Antigravity IDE.app` 内也不含 `antigravity`。旧版启动器只对 app 包与终端 agy 做注入/签名，
+  这份新后端因 Hardened Runtime 拦下 DYLD 注入而直连 Google，30 秒后超时。
+- **解决方法**（通常无需手工操作）：
+  1. **⌘Q 完全退出 Antigravity IDE**（保留后台进程会导致重签名被跳过）；
+  2. **重新运行一次启动器**（菜单 1 或 `antigravity-proxy app ide`）——启动器会在启动前静默自愈
+     `~/.gemini/bin/agy`，日志中会出现 `自愈完成：IDE 内嵌 Gemini 后端已可注入代理`；
+  3. 若 `~/.gemini/bin/agy` 尚不存在，先启动一次 IDE 让扩展下载，再完全退出并重跑启动器。
+- **确认生效**：`tail -n 30 output-mac/logs/proxy-*.log`（或 `~/.local/lib/logs/proxy-*.log`）里应出现：
+  ```text
+  [INFO] 当前宿主进程: agy (路径: /Users/xxx/.gemini/bin/agy)
+  [INFO] 当前进程 agy 启用代理拦截模式
+  [INFO] macOS 代理重定向: 目标=... 代理=127.0.0.1:10808 类型=socks5
+  ```
+- **手工兜底**（仅在启动器自愈失败时）：完全退出 IDE 后执行
+  ```bash
+  ./scripts/mac-patch-app.sh "$HOME/.gemini/bin/agy" ./output-mac/libantigravity_proxy.dylib
+  ```
+  再用启动器启动 IDE 即可；该补丁同样只作用于本机用户目录，官方二进制由扩展在下次升级时自行覆盖。
 
 ---
 

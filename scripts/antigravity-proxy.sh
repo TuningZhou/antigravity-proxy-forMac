@@ -389,6 +389,12 @@ launch_app() {
     cfg="$(resolve_runtime_config "${DYLIB_PATH}")"
     preflight_proxy_reachable "${cfg}" || return 1
     preflight_restart_running_copy "${app_dir}" || return 1
+    # IDE 2.6.0 起 AI 后端改用扩展下载的 ~/.gemini/bin/agy（独立更新）。
+    # 启动前静默自愈其签名权限，否则代理注入会被 Hardened Runtime 忽略，
+    # IDE 报 "Server failed to start at http://127.0.0.1:xxxxx after 30000ms"。
+    if command -v macpatch_ensure_gemini_backends >/dev/null 2>&1; then
+        macpatch_ensure_gemini_backends "${DYLIB_PATH}" || true
+    fi
     echo "[启动] ${app_dir}"
     echo "[注入] ${DYLIB_PATH}"
     open -n \
@@ -429,8 +435,10 @@ elif [ "${TARGET}" = "agy" ]; then
     AGY_PATH="$(command -v agy 2>/dev/null || true)"
     [ -z "${AGY_PATH}" ] && [ -f "$HOME/.antigravity/bin/agy" ] && AGY_PATH="$HOME/.antigravity/bin/agy"
     [ -z "${AGY_PATH}" ] && [ -f "$HOME/.local/bin/agy" ] && AGY_PATH="$HOME/.local/bin/agy"
+    # 终端未安装独立 CLI 时，退回 IDE 2.6.0 扩展下载的内嵌后端（同一 agy 内核）
+    [ -z "${AGY_PATH}" ] && [ -f "$HOME/.gemini/bin/agy" ] && AGY_PATH="$HOME/.gemini/bin/agy"
     if [ -z "${AGY_PATH}" ] || [ ! -f "${AGY_PATH}" ]; then
-        echo "[错误] 未在 PATH、~/.antigravity/bin 或 ~/.local/bin 找到 agy！"
+        echo "[错误] 未在 PATH、~/.antigravity/bin、~/.local/bin 或 ~/.gemini/bin 找到 agy！"
         echo "也可直接指定路径: $0 /path/to/agy changelog"
         exit 1
     fi

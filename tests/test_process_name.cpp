@@ -13,6 +13,8 @@ int main() {
     using Hooks::IsLanguageServerProcessName;
     using Hooks::IsAntigravityBundlePath;
     using Hooks::IsAntigravityRelatedMacProcess;
+    using Hooks::IsAgyProcessName;
+    using Hooks::IsGeminiCliBackendPath;
 
     // 新旧 language server 命名都要触发窄范围子进程兼容。
     assert(IsLanguageServerProcessName("language_server"));
@@ -43,6 +45,19 @@ int main() {
     assert(IsAntigravityRelatedMacProcess("/Applications/Antigravity.app/Contents/MacOS/Electron", "Electron"));
     assert(IsAntigravityRelatedMacProcess("/Users/test/.antigravity/bin/language_server_macos_arm64", "language_server_macos_arm64"));
     assert(!IsAntigravityRelatedMacProcess("/bin/bash", "bash"));
+
+    // Antigravity 2.6.0：IDE 内嵌 Gemini 后端 agy 位于 ~/.gemini/bin，
+    // 路径不含 antigravity，必须靠进程名 / Gemini CLI 目录兜底命中。
+    assert(IsAgyProcessName("agy"));
+    assert(IsAgyProcessName("AGY"));
+    assert(IsAgyProcessName("agy.exe"));
+    assert(!IsAgyProcessName("agy-cli"));
+    assert(IsGeminiCliBackendPath("/Users/test/.gemini/bin/agy"));
+    assert(IsGeminiCliBackendPath("C:\\Users\\test\\.gemini\\bin\\agy.exe"));
+    assert(!IsGeminiCliBackendPath("/Users/test/.local/bin/agy"));
+    assert(IsAntigravityRelatedMacProcess("/Users/test/.gemini/bin/agy", "agy"));
+    assert(IsAntigravityRelatedMacProcess("/Users/test/.local/bin/agy", "agy"));
+    assert(!IsAntigravityRelatedMacProcess("/usr/bin/ssh", "ssh"));
 
     return 0;
 }
